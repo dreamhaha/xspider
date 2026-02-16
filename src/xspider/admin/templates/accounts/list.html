@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}Twitter Accounts - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-twitter"></i> Twitter Accounts</h2>
+        <p class="text-muted">Manage Twitter accounts for scraping</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+            <i class="bi bi-plus-lg"></i> Add Account
+        </button>
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importModal">
+            <i class="bi bi-upload"></i> Import
+        </button>
+        <button class="btn btn-outline-secondary" onclick="checkAllAccounts()">
+            <i class="bi bi-check-circle"></i> Check All
+        </button>
+    </div>
+</div>
+
+<!-- Status Filter -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" id="status-filter" onchange="loadAccounts()">
+            <option value="">All Status</option>
+            <option value="active">Active</option>
+            <option value="rate_limited">Rate Limited</option>
+            <option value="banned">Banned</option>
+            <option value="needs_verify">Needs Verify</option>
+            <option value="error">Error</option>
+        </select>
+    </div>
+</div>
+
+<!-- Accounts Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Requests</th>
+                        <th>Errors</th>
+                        <th>Last Used</th>
+                        <th>Last Check</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-table-body">
+                    <tr>
+                        <td colspan="8" class="text-center py-4">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Account Modal -->
+<div class="modal fade" id="addAccountModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Twitter Account</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return addAccount(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name (optional)</label>
+                        <input type="text" class="form-control" id="account-name" placeholder="Account nickname">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Bearer Token</label>
+                        <textarea class="form-control" id="bearer-token" rows="2" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">CT0 (CSRF Token)</label>
+                        <input type="text" class="form-control" id="ct0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Auth Token</label>
+                        <input type="text" class="form-control" id="auth-token" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes (optional)</label>
+                        <textarea class="form-control" id="account-notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Import Accounts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return importAccounts(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">JSON Array</label>
+                        <textarea class="form-control" id="import-json" rows="10" required
+                            placeholder='[{"bearer_token": "...", "ct0": "...", "auth_token": "..."}]'></textarea>
+                    </div>
+                    <small class="text-muted">
+                        Each account should have: bearer_token, ct0, auth_token. Optional: name, notes.
+                    </small>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Import</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadAccounts() {
+    const statusFilter = document.getElementById('status-filter').value;
+    const url = statusFilter ? `/api/accounts/?status_filter=${statusFilter}` : '/api/accounts/';
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load accounts');
+
+        const accounts = await response.json();
+        renderAccounts(accounts);
+    } catch (error) {
+        console.error('Error loading accounts:', error);
+        document.getElementById('accounts-table-body').innerHTML =
+            '<tr><td colspan="8" class="text-center text-danger">Error loading accounts</td></tr>';
+    }
+}
+
+function renderAccounts(accounts) {
+    const tbody = document.getElementById('accounts-table-body');
+
+    if (accounts.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No accounts found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = accounts.map(account => {
+        const statusBadge = getStatusBadge(account.status);
+        const lastUsed = account.last_used_at ? formatDate(account.last_used_at) : 'Never';
+        const lastCheck = account.last_check_at ? formatDate(account.last_check_at) : 'Never';
+
+        return `
+            <tr>
+                <td>${account.id}</td>
+                <td>${account.name || '-'}</td>
+                <td>${statusBadge}</td>
+                <td>${account.request_count}</td>
+                <td>${account.error_count}</td>
+                <td>${lastUsed}</td>
+                <td>${lastCheck}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="checkAccount(${account.id})" title="Check">
+                            <i class="bi bi-check-circle"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="resetCounters(${account.id})" title="Reset">
+                            <i class="bi bi-arrow-counterclockwise"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deleteAccount(${account.id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'active': '<span class="badge bg-success">Active</span>',
+        'rate_limited': '<span class="badge bg-warning">Rate Limited</span>',
+        'banned': '<span class="badge bg-danger">Banned</span>',
+        'needs_verify': '<span class="badge bg-info">Needs Verify</span>',
+        'error': '<span class="badge bg-secondary">Error</span>'
+    };
+    return badges[status] || status;
+}
+
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+}
+
+async function addAccount(event) {
+    event.preventDefault();
+
+    const data = {
+        name: document.getElementById('account-name').value || null,
+        bearer_token: document.getElementById('bearer-token').value,
+        ct0: document.getElementById('ct0').value,
+        auth_token: document.getElementById('auth-token').value,
+        notes: document.getElementById('account-notes').value || null
+    };
+
+    try {
+        const response = await fetch('/api/accounts/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addAccountModal')).hide();
+            loadAccounts();
+        } else {
+            const error = await response.json();
+            alert(error.detail || 'Failed to add account');
+        }
+    } catch (error) {
+        alert('Error adding account');
+    }
+
+    return false;
+}
+
+async function importAccounts(event) {
+    event.preventDefault();
+
+    try {
+        const jsonText = document.getElementById('import-json').value;
+        const accounts = JSON.parse(jsonText);
+
+        const response = await fetch('/api/accounts/batch-import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accounts })
+        });
+
+        if (response.ok) {
+            const imported = await response.json();
+            bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+            alert(`Successfully imported ${imported.length} accounts`);
+            loadAccounts();
+        } else {
+            const error = await response.json();
+            alert(error.detail || 'Failed to import accounts');
+        }
+    } catch (error) {
+        alert('Invalid JSON format');
+    }
+
+    return false;
+}
+
+async function checkAccount(accountId) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/check`, { method: 'POST' });
+        if (response.ok) {
+            const result = await response.json();
+            alert(`Status: ${result.status}${result.error_message ? '\n' + result.error_message : ''}`);
+            loadAccounts();
+        }
+    } catch (error) {
+        alert('Error checking account');
+    }
+}
+
+async function checkAllAccounts() {
+    if (!confirm('Check all accounts? This may take a while.')) return;
+
+    try {
+        const response = await fetch('/api/accounts/check-all', { method: 'POST' });
+        if (response.ok) {
+            alert('All accounts checked');
+            loadAccounts();
+        }
+    } catch (error) {
+        alert('Error checking accounts');
+    }
+}
+
+async function resetCounters(accountId) {
+    if (!confirm('Reset counters for this account?')) return;
+
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/reset-counters`, { method: 'POST' });
+        if (response.ok) {
+            loadAccounts();
+        }
+    } catch (error) {
+        alert('Error resetting counters');
+    }
+}
+
+async function deleteAccount(accountId) {
+    if (!confirm('Delete this account?')) return;
+
+    try {
+        const response = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadAccounts();
+        }
+    } catch (error) {
+        alert('Error deleting account');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadAccounts);
+</script>
+{% endblock %}

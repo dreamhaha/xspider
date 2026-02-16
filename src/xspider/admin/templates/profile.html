@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - xspider{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-person"></i> Profile</h2>
+        <p class="text-muted">Manage your account settings</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <!-- Profile Info -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-person-circle"></i> Account Information
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label text-muted">Username</label>
+                    <p class="form-control-plaintext"><strong id="profile-username">{{ user.username }}</strong></p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted">Email</label>
+                    <p class="form-control-plaintext" id="profile-email">Loading...</p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted">Role</label>
+                    <p class="form-control-plaintext" id="profile-role">
+                        {% if user.role.value == 'admin' %}
+                        <span class="badge bg-danger">Admin</span>
+                        {% else %}
+                        <span class="badge bg-primary">User</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted">Credits Balance</label>
+                    <p class="form-control-plaintext">
+                        <span class="badge bg-warning text-dark fs-5" id="profile-credits">{{ user.credits }}</span>
+                    </p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted">Member Since</label>
+                    <p class="form-control-plaintext" id="profile-created">Loading...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Change Password -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-key"></i> Change Password
+            </div>
+            <div class="card-body">
+                <form onsubmit="return changePassword(event)">
+                    <div class="mb-3">
+                        <label class="form-label">Current Password</label>
+                        <input type="password" class="form-control" id="current-password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">New Password</label>
+                        <input type="password" class="form-control" id="new-password" required minlength="6">
+                        <small class="text-muted">Minimum 6 characters</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm New Password</label>
+                        <input type="password" class="form-control" id="confirm-password" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg"></i> Update Password
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <!-- Usage Stats -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Usage Statistics
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-4">
+                        <h3 id="stat-searches">-</h3>
+                        <small class="text-muted">Total Searches</small>
+                    </div>
+                    <div class="col-4">
+                        <h3 id="stat-influencers">-</h3>
+                        <small class="text-muted">Influencers Found</small>
+                    </div>
+                    <div class="col-4">
+                        <h3 id="stat-credits-used">-</h3>
+                        <small class="text-muted">Credits Used</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Searches -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-clock-history"></i> Recent Searches
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush" id="recent-searches-list">
+                    <li class="list-group-item text-center text-muted">Loading...</li>
+                </ul>
+            </div>
+            <div class="card-footer text-center">
+                <a href="/searches" class="text-decoration-none">View All Searches</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadProfile() {
+    try {
+        const response = await fetch('/api/auth/me');
+        if (!response.ok) throw new Error('Failed to load profile');
+
+        const user = await response.json();
+
+        document.getElementById('profile-email').textContent = user.email;
+        document.getElementById('profile-credits').textContent = user.credits;
+        document.getElementById('profile-created').textContent = new Date(user.created_at).toLocaleDateString();
+    } catch (error) {
+        console.error('Error loading profile:', error);
+    }
+}
+
+async function loadStats() {
+    try {
+        const [summaryRes, searchesRes] = await Promise.all([
+            fetch('/api/credits/summary'),
+            fetch('/api/searches/?page=1&page_size=5')
+        ]);
+
+        if (summaryRes.ok) {
+            const summary = await summaryRes.json();
+            document.getElementById('stat-credits-used').textContent = summary.total_spent.total;
+        }
+
+        if (searchesRes.ok) {
+            const searches = await searchesRes.json();
+            document.getElementById('stat-searches').textContent = searches.length;
+
+            // Calculate total influencers
+            const totalInfluencers = searches.reduce((sum, s) => sum + (s.seeds_found || 0), 0);
+            document.getElementById('stat-influencers').textContent = totalInfluencers;
+
+            // Render recent searches
+            const list = document.getElementById('recent-searches-list');
+            if (searches.length === 0) {
+                list.innerHTML = '<li class="list-group-item text-center text-muted">No searches yet</li>';
+            } else {
+                list.innerHTML = searches.map(s => `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <a href="/searches/${s.id}" class="text-decoration-none">
+                                ${s.keywords.substring(0, 30)}${s.keywords.length > 30 ? '...' : ''}
+                            </a>
+                            <br>
+                            <small class="text-muted">${new Date(s.created_at).toLocaleDateString()}</small>
+                        </div>
+                        ${getStatusBadge(s.status)}
+                    </li>
+                `).join('');
+            }
+        }
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'pending': '<span class="badge bg-secondary">Pending</span>',
+        'running': '<span class="badge bg-primary">Running</span>',
+        'completed': '<span class="badge bg-success">Completed</span>',
+        'failed': '<span class="badge bg-danger">Failed</span>'
+    };
+    return badges[status] || status;
+}
+
+async function changePassword(event) {
+    event.preventDefault();
+
+    const currentPassword = document.getElementById('current-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+
+    if (newPassword !== confirmPassword) {
+        alert('New passwords do not match');
+        return false;
+    }
+
+    try {
+        const response = await fetch('/api/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                current_password: currentPassword,
+                new_password: newPassword
+            })
+        });
+
+        if (response.ok) {
+            alert('Password changed successfully');
+            document.getElementById('current-password').value = '';
+            document.getElementById('new-password').value = '';
+            document.getElementById('confirm-password').value = '';
+        } else {
+            const error = await response.json();
+            alert(error.detail || 'Failed to change password');
+        }
+    } catch (error) {
+        alert('Error changing password');
+    }
+
+    return false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadProfile();
+    loadStats();
+});
+</script>
+{% endblock %}

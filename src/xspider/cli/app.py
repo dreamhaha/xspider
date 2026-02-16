@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 
 from xspider import __version__
-from xspider.cli.commands import audit, crawl, export, rank, seed
+from xspider.cli.commands import admin, audit, crawl, export, rank, seed
 
 console = Console()
 
@@ -27,6 +27,7 @@ app.add_typer(crawl.app, name="crawl", help="Web crawling commands / 网络爬�
 app.add_typer(rank.app, name="rank", help="PageRank ranking commands / PageRank排名命令")
 app.add_typer(audit.app, name="audit", help="AI audit commands / AI审核命令")
 app.add_typer(export.app, name="export", help="Export commands / 导出命令")
+app.add_typer(admin.app, name="admin", help="Admin server commands / 后台管理命令")
 
 
 def version_callback(value: bool) -> None:

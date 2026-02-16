@@ -1,0 +1,725 @@
+{% extends "base.html" %}
+
+{% block title %}Monitor - @{{ influencer.screen_name if influencer else 'Loading...' }}{% endblock %}
+
+{% block content %}
+<nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="/admin/monitors">Monitoring</a></li>
+        <li class="breadcrumb-item active" id="breadcrumbName">Loading...</li>
+    </ol>
+</nav>
+
+<!-- Influencer Profile Card -->
+<div class="card mb-4" id="profileCard">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="d-flex align-items-center">
+                    <img id="profileImage" src="" class="rounded-circle me-3" width="80" height="80" style="display:none;">
+                    <div>
+                        <h3>
+                            <span id="displayName"></span>
+                            <span id="verifiedBadge" class="text-primary" style="display:none;">
+                                <i class="bi bi-patch-check-fill"></i>
+                            </span>
+                        </h3>
+                        <p class="text-muted mb-1">@<span id="screenName"></span></p>
+                        <p id="bio" class="mb-0"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 text-end">
+                <div class="mb-2">
+                    <span class="badge" id="statusBadge">Loading</span>
+                </div>
+                <div class="btn-group">
+                    <button class="btn btn-outline-primary" onclick="fetchTweets()">
+                        <i class="bi bi-download"></i> Fetch Tweets
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="toggleStatus()">
+                        <i class="bi bi-pause" id="toggleIcon"></i>
+                        <span id="toggleText">Pause</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Row -->
+        <div class="row mt-4 text-center">
+            <div class="col-md-2">
+                <h5 id="followersCount">-</h5>
+                <small class="text-muted">Followers</small>
+            </div>
+            <div class="col-md-2">
+                <h5 id="followingCount">-</h5>
+                <small class="text-muted">Following</small>
+            </div>
+            <div class="col-md-2">
+                <h5 id="tweetCount">-</h5>
+                <small class="text-muted">Total Tweets</small>
+            </div>
+            <div class="col-md-2">
+                <h5 id="collectedTweets">-</h5>
+                <small class="text-muted">Collected</small>
+            </div>
+            <div class="col-md-2">
+                <h5 id="analyzedCommenters">-</h5>
+                <small class="text-muted">Analyzed</small>
+            </div>
+            <div class="col-md-2">
+                <h5 id="checkInterval">-</h5>
+                <small class="text-muted">Check Interval</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-4" role="tablist">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#tweetsTab">
+            <i class="bi bi-chat-square-text"></i> Tweets
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#commentersTab">
+            <i class="bi bi-people"></i> All Commenters
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#settingsTab">
+            <i class="bi bi-gear"></i> Settings
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- Tweets Tab -->
+    <div class="tab-pane fade show active" id="tweetsTab">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th style="width:40%">Content</th>
+                        <th>Engagement</th>
+                        <th>Commenters</th>
+                        <th>Posted</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tweetsList">
+                    <tr><td colspan="5" class="text-center">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <nav id="tweetsPagination" class="d-flex justify-content-center"></nav>
+    </div>
+
+    <!-- All Commenters Tab -->
+    <div class="tab-pane fade" id="commentersTab">
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3">
+                        <select class="form-select" id="commenterFilter">
+                            <option value="">All</option>
+                            <option value="real">Real Users</option>
+                            <option value="suspicious">Suspicious</option>
+                            <option value="bot">Bots</option>
+                            <option value="dm">Can DM</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <input type="number" class="form-control" id="minScore" placeholder="Min Score" min="0" max="100">
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-outline-primary" onclick="loadAllCommenters()">
+                            <i class="bi bi-funnel"></i> Filter
+                        </button>
+                    </div>
+                    <div class="col-md-3 text-end">
+                        <button class="btn btn-success" onclick="exportCommenters()">
+                            <i class="bi bi-download"></i> Export
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>User</th>
+                        <th>Followers</th>
+                        <th>Score</th>
+                        <th>Label</th>
+                        <th>DM</th>
+                        <th>Comment</th>
+                    </tr>
+                </thead>
+                <tbody id="commentersList">
+                    <tr><td colspan="6" class="text-center">Select a tweet or filter commenters</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <nav id="commentersPagination" class="d-flex justify-content-center"></nav>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-pane fade" id="settingsTab">
+        <div class="card">
+            <div class="card-body">
+                <form id="settingsForm">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Monitor Since</label>
+                            <input type="datetime-local" class="form-control" id="monitorSince">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Monitor Until</label>
+                            <input type="datetime-local" class="form-control" id="monitorUntil">
+                        </div>
+                    </div>
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Check Interval (minutes)</label>
+                            <input type="number" class="form-control" id="checkIntervalInput" min="5" max="1440">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notes</label>
+                        <textarea class="form-control" id="notes" rows="3"></textarea>
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="saveSettings()">
+                        <i class="bi bi-check"></i> Save Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tweet Detail Modal -->
+<div class="modal fade" id="tweetDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Tweet Commenters</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Tweet Content -->
+                <div class="card mb-3">
+                    <div class="card-body">
+                        <p id="modalTweetContent"></p>
+                        <div class="d-flex gap-3 text-muted">
+                            <span><i class="bi bi-heart"></i> <span id="modalLikes">0</span></span>
+                            <span><i class="bi bi-repeat"></i> <span id="modalRetweets">0</span></span>
+                            <span><i class="bi bi-chat"></i> <span id="modalReplies">0</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Analysis Summary -->
+                <div class="row mb-3">
+                    <div class="col-md-2">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <h4 id="modalTotal">0</h4>
+                                <small>Total</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-success text-white">
+                            <div class="card-body text-center">
+                                <h4 id="modalReal">0</h4>
+                                <small>Real Users</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-warning text-dark">
+                            <div class="card-body text-center">
+                                <h4 id="modalSuspicious">0</h4>
+                                <small>Suspicious</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-danger text-white">
+                            <div class="card-body text-center">
+                                <h4 id="modalBots">0</h4>
+                                <small>Bots</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-info text-white">
+                            <div class="card-body text-center">
+                                <h4 id="modalDM">0</h4>
+                                <small>Can DM</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <div class="card bg-primary text-white">
+                            <div class="card-body text-center">
+                                <h4 id="modalAvgScore">0</h4>
+                                <small>Avg Score</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="mb-3">
+                    <button class="btn btn-outline-primary" onclick="scrapeCommenters()">
+                        <i class="bi bi-download"></i> Scrape Commenters
+                    </button>
+                    <button class="btn btn-outline-success" onclick="analyzeCommenters()">
+                        <i class="bi bi-cpu"></i> Analyze
+                    </button>
+                    <button class="btn btn-outline-info" onclick="checkDM()">
+                        <i class="bi bi-envelope"></i> Check DM
+                    </button>
+                    <button class="btn btn-success float-end" onclick="exportTweetCommenters()">
+                        <i class="bi bi-download"></i> Export
+                    </button>
+                </div>
+
+                <!-- Commenters Table -->
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>User</th>
+                                <th>Followers</th>
+                                <th>Score</th>
+                                <th>Label</th>
+                                <th>DM</th>
+                                <th>Comment</th>
+                            </tr>
+                        </thead>
+                        <tbody id="modalCommentersList">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const influencerId = {{ influencer_id }};
+let currentTweetId = null;
+let influencerData = null;
+
+async function loadInfluencer() {
+    try {
+        const response = await fetch(`/api/monitors/influencers/${influencerId}`, {
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+
+        if (!response.ok) {
+            window.location.href = '/admin/monitors';
+            return;
+        }
+
+        influencerData = await response.json();
+        renderProfile(influencerData);
+    } catch (error) {
+        console.error('Failed to load influencer:', error);
+    }
+}
+
+function renderProfile(inf) {
+    document.getElementById('breadcrumbName').textContent = '@' + inf.screen_name;
+    document.getElementById('screenName').textContent = inf.screen_name;
+    document.getElementById('displayName').textContent = inf.display_name || inf.screen_name;
+    document.getElementById('bio').textContent = inf.bio || '';
+
+    if (inf.profile_image_url) {
+        const img = document.getElementById('profileImage');
+        img.src = inf.profile_image_url;
+        img.style.display = 'block';
+    }
+
+    if (inf.verified) {
+        document.getElementById('verifiedBadge').style.display = 'inline';
+    }
+
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = inf.status;
+    badge.className = 'badge ' + getStatusBadgeClass(inf.status);
+
+    document.getElementById('followersCount').textContent = formatNumber(inf.followers_count);
+    document.getElementById('followingCount').textContent = formatNumber(inf.following_count);
+    document.getElementById('tweetCount').textContent = formatNumber(inf.tweet_count);
+    document.getElementById('collectedTweets').textContent = inf.tweets_collected;
+    document.getElementById('analyzedCommenters').textContent = inf.commenters_analyzed;
+    document.getElementById('checkInterval').textContent = inf.check_interval_minutes + 'm';
+
+    // Update toggle button
+    const icon = document.getElementById('toggleIcon');
+    const text = document.getElementById('toggleText');
+    if (inf.status === 'active') {
+        icon.className = 'bi bi-pause';
+        text.textContent = 'Pause';
+    } else {
+        icon.className = 'bi bi-play';
+        text.textContent = 'Resume';
+    }
+
+    // Settings tab
+    if (inf.monitor_since) {
+        document.getElementById('monitorSince').value = inf.monitor_since.slice(0, 16);
+    }
+    if (inf.monitor_until) {
+        document.getElementById('monitorUntil').value = inf.monitor_until.slice(0, 16);
+    }
+    document.getElementById('checkIntervalInput').value = inf.check_interval_minutes;
+    document.getElementById('notes').value = inf.notes || '';
+}
+
+function getStatusBadgeClass(status) {
+    switch(status) {
+        case 'active': return 'bg-success';
+        case 'paused': return 'bg-warning text-dark';
+        case 'completed': return 'bg-info';
+        case 'error': return 'bg-danger';
+        default: return 'bg-secondary';
+    }
+}
+
+async function loadTweets(page = 1) {
+    try {
+        const response = await fetch(`/api/monitors/influencers/${influencerId}/tweets?page=${page}`, {
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const data = await response.json();
+        renderTweets(data.tweets);
+    } catch (error) {
+        console.error('Failed to load tweets:', error);
+    }
+}
+
+function renderTweets(tweets) {
+    const tbody = document.getElementById('tweetsList');
+
+    if (!tweets || tweets.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="text-center">No tweets collected yet</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = tweets.map(t => `
+        <tr>
+            <td>
+                <div style="max-height:80px; overflow:hidden;">
+                    ${t.content.length > 150 ? t.content.substring(0, 150) + '...' : t.content}
+                </div>
+                ${t.has_media ? '<span class="badge bg-secondary">Media</span>' : ''}
+                ${t.has_links ? '<span class="badge bg-info">Links</span>' : ''}
+            </td>
+            <td>
+                <span title="Likes"><i class="bi bi-heart"></i> ${formatNumber(t.like_count)}</span><br>
+                <span title="Retweets"><i class="bi bi-repeat"></i> ${formatNumber(t.retweet_count)}</span><br>
+                <span title="Replies"><i class="bi bi-chat"></i> ${formatNumber(t.reply_count)}</span>
+            </td>
+            <td>
+                ${t.total_commenters} scraped<br>
+                <small class="text-muted">${t.commenters_analyzed ? 'Analyzed' : 'Not analyzed'}</small>
+            </td>
+            <td>${formatDateTime(t.tweeted_at)}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary" onclick="showTweetDetail(${t.id})">
+                    <i class="bi bi-eye"></i> View
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function showTweetDetail(tweetId) {
+    currentTweetId = tweetId;
+
+    // Get tweet info from table
+    const tweets = await (await fetch(`/api/monitors/influencers/${influencerId}/tweets`, {
+        headers: { 'Authorization': 'Bearer ' + getToken() }
+    })).json();
+
+    const tweet = tweets.tweets.find(t => t.id === tweetId);
+    if (tweet) {
+        document.getElementById('modalTweetContent').textContent = tweet.content;
+        document.getElementById('modalLikes').textContent = formatNumber(tweet.like_count);
+        document.getElementById('modalRetweets').textContent = formatNumber(tweet.retweet_count);
+        document.getElementById('modalReplies').textContent = formatNumber(tweet.reply_count);
+    }
+
+    // Load analysis summary
+    await loadAnalysisSummary(tweetId);
+
+    // Load commenters
+    await loadTweetCommenters(tweetId);
+
+    new bootstrap.Modal(document.getElementById('tweetDetailModal')).show();
+}
+
+async function loadAnalysisSummary(tweetId) {
+    try {
+        const response = await fetch(`/api/monitors/tweets/${tweetId}/analysis-summary`, {
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const summary = await response.json();
+
+        document.getElementById('modalTotal').textContent = summary.total_commenters;
+        document.getElementById('modalReal').textContent = summary.real_users;
+        document.getElementById('modalSuspicious').textContent = summary.suspicious;
+        document.getElementById('modalBots').textContent = summary.bots;
+        document.getElementById('modalDM').textContent = summary.can_dm_count;
+        document.getElementById('modalAvgScore').textContent = summary.average_authenticity_score.toFixed(1);
+    } catch (error) {
+        console.error('Failed to load summary:', error);
+    }
+}
+
+async function loadTweetCommenters(tweetId) {
+    try {
+        const response = await fetch(`/api/monitors/tweets/${tweetId}/commenters?page_size=50`, {
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const data = await response.json();
+        renderCommenters(data.commenters, 'modalCommentersList');
+    } catch (error) {
+        console.error('Failed to load commenters:', error);
+    }
+}
+
+async function loadAllCommenters(page = 1) {
+    const filter = document.getElementById('commenterFilter').value;
+    const minScore = document.getElementById('minScore').value;
+
+    let url = `/api/monitors/influencers/${influencerId}/tweets`;
+
+    try {
+        // Get all tweets first
+        const tweetsResp = await fetch(url, {
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const tweetsData = await tweetsResp.json();
+
+        // For each tweet, get commenters (simplified - in production use dedicated endpoint)
+        let allCommenters = [];
+        for (const tweet of tweetsData.tweets.slice(0, 5)) {  // Limit for demo
+            let commUrl = `/api/monitors/tweets/${tweet.id}/commenters?page_size=100`;
+            if (filter === 'real') commUrl += '&is_real_user=true';
+            if (filter === 'bot') commUrl += '&is_bot=true';
+            if (filter === 'dm') commUrl += '&can_dm=true';
+            if (minScore) commUrl += `&min_authenticity_score=${minScore}`;
+
+            const resp = await fetch(commUrl, {
+                headers: { 'Authorization': 'Bearer ' + getToken() }
+            });
+            const data = await resp.json();
+            allCommenters = allCommenters.concat(data.commenters);
+        }
+
+        renderCommenters(allCommenters, 'commentersList');
+    } catch (error) {
+        console.error('Failed to load commenters:', error);
+    }
+}
+
+function renderCommenters(commenters, elementId) {
+    const tbody = document.getElementById(elementId);
+
+    if (!commenters || commenters.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center">No commenters found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = commenters.map(c => `
+        <tr>
+            <td>
+                <strong>@${c.screen_name}</strong>
+                ${c.verified ? '<i class="bi bi-patch-check-fill text-primary"></i>' : ''}
+                <br><small class="text-muted">${c.display_name || ''}</small>
+            </td>
+            <td>${formatNumber(c.followers_count)}</td>
+            <td>
+                <span class="badge ${getScoreBadgeClass(c.authenticity_score)}">
+                    ${c.authenticity_score.toFixed(0)}
+                </span>
+            </td>
+            <td>
+                <span class="badge ${getLabelBadgeClass(c.primary_label)}">
+                    ${c.primary_label || 'Unknown'}
+                </span>
+            </td>
+            <td>
+                ${c.dm_status === 'open' ?
+                    '<span class="badge bg-success">Open</span>' :
+                    c.dm_status === 'followers_only' ?
+                    '<span class="badge bg-warning text-dark">Followers</span>' :
+                    c.dm_status === 'closed' ?
+                    '<span class="badge bg-danger">Closed</span>' :
+                    '<span class="badge bg-secondary">Unknown</span>'
+                }
+            </td>
+            <td style="max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                ${c.comment_text}
+            </td>
+        </tr>
+    `).join('');
+}
+
+function getScoreBadgeClass(score) {
+    if (score >= 70) return 'bg-success';
+    if (score >= 40) return 'bg-warning text-dark';
+    return 'bg-danger';
+}
+
+function getLabelBadgeClass(label) {
+    switch(label) {
+        case 'real_user': return 'bg-success';
+        case 'verified': return 'bg-primary';
+        case 'influencer': return 'bg-info';
+        case 'suspicious': return 'bg-warning text-dark';
+        case 'bot': return 'bg-danger';
+        case 'new_account': return 'bg-secondary';
+        case 'low_activity': return 'bg-secondary';
+        default: return 'bg-secondary';
+    }
+}
+
+async function fetchTweets() {
+    try {
+        const response = await fetch(`/api/monitors/influencers/${influencerId}/fetch-tweets?max_tweets=20`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const result = await response.json();
+        showToast(result.message, 'success');
+        loadInfluencer();
+        loadTweets();
+    } catch (error) {
+        showToast('Failed to fetch tweets', 'danger');
+    }
+}
+
+async function toggleStatus() {
+    if (!influencerData) return;
+    const newStatus = influencerData.status === 'active' ? 'paused' : 'active';
+
+    try {
+        await fetch(`/api/monitors/influencers/${influencerId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + getToken()
+            },
+            body: JSON.stringify({ status: newStatus })
+        });
+        loadInfluencer();
+        showToast(`Monitor ${newStatus}`, 'success');
+    } catch (error) {
+        showToast('Failed to update status', 'danger');
+    }
+}
+
+async function saveSettings() {
+    const data = {
+        check_interval_minutes: parseInt(document.getElementById('checkIntervalInput').value),
+        notes: document.getElementById('notes').value
+    };
+
+    const monitorSince = document.getElementById('monitorSince').value;
+    const monitorUntil = document.getElementById('monitorUntil').value;
+
+    if (monitorSince) data.monitor_since = new Date(monitorSince).toISOString();
+    if (monitorUntil) data.monitor_until = new Date(monitorUntil).toISOString();
+
+    try {
+        await fetch(`/api/monitors/influencers/${influencerId}`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + getToken()
+            },
+            body: JSON.stringify(data)
+        });
+        loadInfluencer();
+        showToast('Settings saved', 'success');
+    } catch (error) {
+        showToast('Failed to save settings', 'danger');
+    }
+}
+
+async function scrapeCommenters() {
+    if (!currentTweetId) return;
+    try {
+        const response = await fetch(`/api/monitors/tweets/${currentTweetId}/scrape-commenters?max_commenters=100`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const result = await response.json();
+        showToast(result.message, 'success');
+        await loadAnalysisSummary(currentTweetId);
+        await loadTweetCommenters(currentTweetId);
+    } catch (error) {
+        showToast('Failed to scrape commenters', 'danger');
+    }
+}
+
+async function analyzeCommenters() {
+    if (!currentTweetId) return;
+    try {
+        const response = await fetch(`/api/monitors/tweets/${currentTweetId}/analyze-commenters`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const result = await response.json();
+        showToast(result.message, 'success');
+        await loadAnalysisSummary(currentTweetId);
+        await loadTweetCommenters(currentTweetId);
+    } catch (error) {
+        showToast('Failed to analyze commenters', 'danger');
+    }
+}
+
+async function checkDM() {
+    if (!currentTweetId) return;
+    try {
+        const response = await fetch(`/api/monitors/tweets/${currentTweetId}/check-dm`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + getToken() }
+        });
+        const result = await response.json();
+        showToast(result.message, 'success');
+        await loadAnalysisSummary(currentTweetId);
+        await loadTweetCommenters(currentTweetId);
+    } catch (error) {
+        showToast('Failed to check DM status', 'danger');
+    }
+}
+
+async function exportTweetCommenters() {
+    if (!currentTweetId) return;
+    window.location.href = `/api/monitors/export-commenters?tweet_id=${currentTweetId}&format=csv`;
+}
+
+async function exportCommenters() {
+    window.location.href = `/api/monitors/export-commenters?influencer_id=${influencerId}&format=csv`;
+}
+
+// Init
+document.addEventListener('DOMContentLoaded', function() {
+    loadInfluencer();
+    loadTweets();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,425 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-speedometer2"></i> Dashboard</h2>
+        <p class="text-muted">Overview of system status and statistics</p>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4" id="stats-cards">
+    <div class="col-md-3 mb-3">
+        <div class="card bg-primary text-white h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Twitter Accounts</h6>
+                        <h2 class="mb-0" id="stat-total-accounts">-</h2>
+                    </div>
+                    <div class="display-4 opacity-50">
+                        <i class="bi bi-twitter"></i>
+                    </div>
+                </div>
+                <small><span id="stat-active-accounts">-</span> active</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-success text-white h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Proxies</h6>
+                        <h2 class="mb-0" id="stat-total-proxies">-</h2>
+                    </div>
+                    <div class="display-4 opacity-50">
+                        <i class="bi bi-hdd-network"></i>
+                    </div>
+                </div>
+                <small><span id="stat-active-proxies">-</span> active</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-info text-white h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Users</h6>
+                        <h2 class="mb-0" id="stat-total-users">-</h2>
+                    </div>
+                    <div class="display-4 opacity-50">
+                        <i class="bi bi-people"></i>
+                    </div>
+                </div>
+                <small><span id="stat-active-users-today">-</span> active today</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card bg-warning text-dark h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h6 class="card-title">Searches Today</h6>
+                        <h2 class="mb-0" id="stat-searches-today">-</h2>
+                    </div>
+                    <div class="display-4 opacity-50">
+                        <i class="bi bi-search"></i>
+                    </div>
+                </div>
+                <small><span id="stat-searches-running">-</span> running</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Monitoring Stats Cards -->
+<div class="row mb-4">
+    <div class="col-12 mb-2">
+        <h5><i class="bi bi-broadcast"></i> Influencer Monitoring</h5>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card border-primary h-100">
+            <div class="card-body text-center">
+                <h3 class="mb-0 text-primary" id="stat-active-monitors">-</h3>
+                <small class="text-muted">Active Monitors</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card border-success h-100">
+            <div class="card-body text-center">
+                <h3 class="mb-0 text-success" id="stat-tweets-collected">-</h3>
+                <small class="text-muted">Tweets Collected</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card border-info h-100">
+            <div class="card-body text-center">
+                <h3 class="mb-0 text-info" id="stat-commenters-analyzed">-</h3>
+                <small class="text-muted">Commenters Analyzed</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card border-success h-100">
+            <div class="card-body text-center">
+                <h3 class="mb-0 text-success" id="stat-real-users">-</h3>
+                <small class="text-muted">Real Users</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card border-danger h-100">
+            <div class="card-body text-center">
+                <h3 class="mb-0 text-danger" id="stat-bots-detected">-</h3>
+                <small class="text-muted">Bots Detected</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-2 mb-3">
+        <div class="card border-warning h-100">
+            <div class="card-body text-center">
+                <h3 class="mb-0 text-warning" id="stat-dm-available">-</h3>
+                <small class="text-muted">DM Available</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Charts -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-pie-chart"></i> Account Status Distribution
+            </div>
+            <div class="card-body">
+                <canvas id="account-status-chart"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-bar-chart"></i> Daily Search Activity (7 Days)
+            </div>
+            <div class="card-body">
+                <canvas id="daily-search-chart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Recent Activity -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-activity"></i> Recent Activity
+            </div>
+            <div class="card-body p-0">
+                <ul class="list-group list-group-flush" id="recent-activity-list">
+                    <li class="list-group-item text-center text-muted">Loading...</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="col-md-6 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-lightning"></i> Quick Actions
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/search" class="btn btn-primary">
+                        <i class="bi bi-search"></i> New Search
+                    </a>
+                    <a href="/admin/monitors" class="btn btn-outline-success">
+                        <i class="bi bi-broadcast"></i> Monitor Influencers
+                    </a>
+                    {% if user.role.value == 'admin' %}
+                    <a href="/admin/accounts" class="btn btn-outline-primary">
+                        <i class="bi bi-twitter"></i> Manage Accounts
+                    </a>
+                    <button class="btn btn-outline-secondary" onclick="checkAllAccounts()">
+                        <i class="bi bi-check-circle"></i> Check All Accounts
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="checkAllProxies()">
+                        <i class="bi bi-hdd-network"></i> Check All Proxies
+                    </button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let accountStatusChart = null;
+let dailySearchChart = null;
+
+async function loadDashboardStats() {
+    try {
+        const response = await fetch('/api/dashboard/stats');
+        if (!response.ok) throw new Error('Failed to load stats');
+
+        const stats = await response.json();
+
+        document.getElementById('stat-total-accounts').textContent = stats.total_accounts;
+        document.getElementById('stat-active-accounts').textContent = stats.active_accounts;
+        document.getElementById('stat-total-proxies').textContent = stats.total_proxies;
+        document.getElementById('stat-active-proxies').textContent = stats.active_proxies;
+        document.getElementById('stat-total-users').textContent = stats.total_users;
+        document.getElementById('stat-active-users-today').textContent = stats.active_users_today;
+        document.getElementById('stat-searches-today').textContent = stats.searches_today;
+        document.getElementById('stat-searches-running').textContent = stats.searches_running;
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+async function loadMonitoringStats() {
+    try {
+        const response = await fetch('/api/dashboard/monitoring-stats');
+        if (!response.ok) throw new Error('Failed to load monitoring stats');
+
+        const stats = await response.json();
+
+        document.getElementById('stat-active-monitors').textContent = stats.active_monitors;
+        document.getElementById('stat-tweets-collected').textContent = stats.total_tweets_collected;
+        document.getElementById('stat-commenters-analyzed').textContent = stats.total_commenters_analyzed;
+        document.getElementById('stat-real-users').textContent = stats.real_users_found;
+        document.getElementById('stat-bots-detected').textContent = stats.bots_detected;
+        document.getElementById('stat-dm-available').textContent = stats.dm_available_count;
+    } catch (error) {
+        console.error('Error loading monitoring stats:', error);
+    }
+}
+
+async function loadAccountDistribution() {
+    try {
+        const response = await fetch('/api/dashboard/account-distribution');
+        if (!response.ok) throw new Error('Failed to load distribution');
+
+        const data = await response.json();
+
+        const ctx = document.getElementById('account-status-chart').getContext('2d');
+
+        if (accountStatusChart) {
+            accountStatusChart.destroy();
+        }
+
+        accountStatusChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Active', 'Rate Limited', 'Banned', 'Needs Verify', 'Error'],
+                datasets: [{
+                    data: [data.active, data.rate_limited, data.banned, data.needs_verify, data.error],
+                    backgroundColor: ['#198754', '#ffc107', '#dc3545', '#fd7e14', '#6c757d']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: {
+                        position: 'bottom'
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading account distribution:', error);
+    }
+}
+
+async function loadDailySearchStats() {
+    try {
+        const response = await fetch('/api/dashboard/daily-searches?days=7');
+        if (!response.ok) throw new Error('Failed to load daily stats');
+
+        const data = await response.json();
+
+        const ctx = document.getElementById('daily-search-chart').getContext('2d');
+
+        if (dailySearchChart) {
+            dailySearchChart.destroy();
+        }
+
+        dailySearchChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: data.map(d => d.date),
+                datasets: [{
+                    label: 'Searches',
+                    data: data.map(d => d.searches),
+                    backgroundColor: '#0d6efd'
+                }, {
+                    label: 'Credits Used',
+                    data: data.map(d => d.credits_used),
+                    backgroundColor: '#ffc107',
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        position: 'left'
+                    },
+                    y1: {
+                        beginAtZero: true,
+                        position: 'right',
+                        grid: {
+                            drawOnChartArea: false
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error loading daily search stats:', error);
+    }
+}
+
+async function loadRecentActivity() {
+    try {
+        const response = await fetch('/api/dashboard/recent-activity?limit=8');
+        if (!response.ok) throw new Error('Failed to load activity');
+
+        const activities = await response.json();
+        const list = document.getElementById('recent-activity-list');
+
+        if (activities.length === 0) {
+            list.innerHTML = '<li class="list-group-item text-center text-muted">No recent activity</li>';
+            return;
+        }
+
+        list.innerHTML = activities.map(activity => {
+            const icon = activity.type === 'search' ? 'bi-search' :
+                         activity.type === 'login' ? 'bi-box-arrow-in-right' :
+                         activity.type === 'recharge' ? 'bi-coin' : 'bi-activity';
+
+            const timeAgo = formatTimeAgo(new Date(activity.timestamp));
+
+            return `
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <i class="bi ${icon} me-2"></i>
+                        <strong>${activity.user}</strong>: ${activity.description}
+                    </div>
+                    <small class="text-muted">${timeAgo}</small>
+                </li>
+            `;
+        }).join('');
+    } catch (error) {
+        console.error('Error loading recent activity:', error);
+    }
+}
+
+function formatTimeAgo(date) {
+    const seconds = Math.floor((new Date() - date) / 1000);
+
+    if (seconds < 60) return 'just now';
+    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+    return Math.floor(seconds / 86400) + 'd ago';
+}
+
+async function checkAllAccounts() {
+    if (!confirm('Check all Twitter accounts? This may take a while.')) return;
+
+    try {
+        const response = await fetch('/api/accounts/check-all', { method: 'POST' });
+        if (response.ok) {
+            alert('Account check completed. Refresh to see results.');
+            loadDashboardStats();
+            loadAccountDistribution();
+        }
+    } catch (error) {
+        alert('Error checking accounts');
+    }
+}
+
+async function checkAllProxies() {
+    if (!confirm('Check all proxies? This may take a while.')) return;
+
+    try {
+        const response = await fetch('/api/proxies/check-all', { method: 'POST' });
+        if (response.ok) {
+            alert('Proxy check completed. Refresh to see results.');
+            loadDashboardStats();
+        }
+    } catch (error) {
+        alert('Error checking proxies');
+    }
+}
+
+// Initialize
+document.addEventListener('DOMContentLoaded', () => {
+    loadDashboardStats();
+    loadMonitoringStats();
+    loadAccountDistribution();
+    loadDailySearchStats();
+    loadRecentActivity();
+
+    // Refresh every 30 seconds
+    setInterval(() => {
+        loadDashboardStats();
+        loadMonitoringStats();
+        loadRecentActivity();
+    }, 30000);
+});
+</script>
+{% endblock %}

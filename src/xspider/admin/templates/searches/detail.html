@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+
+{% block title %}Search Results - xspider{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/searches">Search History</a></li>
+                <li class="breadcrumb-item active">Search #{{ search_id }}</li>
+            </ol>
+        </nav>
+        <h2><i class="bi bi-search"></i> Search Results</h2>
+    </div>
+</div>
+
+<!-- Search Info -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> Search Details
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Keywords:</strong> <span id="search-keywords">-</span></p>
+                        <p><strong>Industry:</strong> <span id="search-industry">-</span></p>
+                        <p><strong>Status:</strong> <span id="search-status">-</span></p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Seeds Found:</strong> <span id="search-seeds">-</span></p>
+                        <p><strong>Users Crawled:</strong> <span id="search-crawled">-</span></p>
+                        <p><strong>Credits Used:</strong> <span id="search-credits">-</span></p>
+                    </div>
+                </div>
+                <div id="error-message" class="alert alert-danger d-none"></div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-download"></i> Export
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-success" onclick="exportResults('csv')">
+                        <i class="bi bi-file-earmark-spreadsheet"></i> Export CSV
+                    </button>
+                    <button class="btn btn-outline-success" onclick="exportResults('json')">
+                        <i class="bi bi-file-earmark-code"></i> Export JSON
+                    </button>
+                </div>
+                <div class="form-check mt-3">
+                    <input class="form-check-input" type="checkbox" id="include-irrelevant">
+                    <label class="form-check-label" for="include-irrelevant">
+                        Include irrelevant users
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Results Table -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-people"></i> Discovered Influencers</span>
+        <span class="badge bg-primary" id="influencer-count">0</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Rank</th>
+                        <th>User</th>
+                        <th>Followers</th>
+                        <th>PageRank</th>
+                        <th>Hidden Score</th>
+                        <th>Relevance</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="influencers-table-body">
+                    <tr>
+                        <td colspan="7" class="text-center py-4">Loading...</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const searchId = {{ search_id }};
+
+async function loadSearchDetails() {
+    try {
+        const response = await fetch(`/api/searches/${searchId}`);
+        if (!response.ok) throw new Error('Failed to load search');
+
+        const data = await response.json();
+        renderSearchInfo(data);
+        renderInfluencers(data.influencers);
+    } catch (error) {
+        console.error('Error loading search:', error);
+        document.getElementById('influencers-table-body').innerHTML =
+            '<tr><td colspan="7" class="text-center text-danger">Error loading results</td></tr>';
+    }
+}
+
+function renderSearchInfo(search) {
+    document.getElementById('search-keywords').textContent = search.keywords;
+    document.getElementById('search-industry').textContent = search.industry || 'Not specified';
+    document.getElementById('search-status').innerHTML = getStatusBadge(search.status);
+    document.getElementById('search-seeds').textContent = search.seeds_found;
+    document.getElementById('search-crawled').textContent = search.users_crawled;
+    document.getElementById('search-credits').textContent = search.credits_used;
+
+    if (search.error_message) {
+        const errorDiv = document.getElementById('error-message');
+        errorDiv.textContent = search.error_message;
+        errorDiv.classList.remove('d-none');
+    }
+}
+
+function renderInfluencers(influencers) {
+    const tbody = document.getElementById('influencers-table-body');
+    document.getElementById('influencer-count').textContent = influencers.length;
+
+    if (influencers.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No influencers found</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = influencers.map((inf, index) => {
+        const relevanceBadge = inf.is_relevant
+            ? `<span class="badge bg-success">${inf.relevance_score}/10</span>`
+            : '<span class="badge bg-secondary">N/A</span>';
+
+        return `
+            <tr>
+                <td>${index + 1}</td>
+                <td>
+                    <a href="https://twitter.com/${inf.screen_name}" target="_blank" class="text-decoration-none">
+                        <strong>@${inf.screen_name}</strong>
+                    </a>
+                    ${inf.name ? `<br><small class="text-muted">${inf.name}</small>` : ''}
+                </td>
+                <td>${formatNumber(inf.followers_count)}</td>
+                <td>${inf.pagerank_score.toFixed(6)}</td>
+                <td>${inf.hidden_score.toFixed(4)}</td>
+                <td>${relevanceBadge}</td>
+                <td>
+                    <a href="https://twitter.com/${inf.screen_name}" target="_blank" class="btn btn-sm btn-outline-primary">
+                        <i class="bi bi-box-arrow-up-right"></i>
+                    </a>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'pending': '<span class="badge bg-secondary">Pending</span>',
+        'running': '<span class="badge bg-primary">Running</span>',
+        'completed': '<span class="badge bg-success">Completed</span>',
+        'failed': '<span class="badge bg-danger">Failed</span>'
+    };
+    return badges[status] || status;
+}
+
+function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function exportResults(format) {
+    const includeIrrelevant = document.getElementById('include-irrelevant').checked;
+    window.open(`/api/searches/${searchId}/export?format=${format}&include_irrelevant=${includeIrrelevant}`, '_blank');
+}
+
+document.addEventListener('DOMContentLoaded', loadSearchDetails);
+</script>
+{% endblock %}

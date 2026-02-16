@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+
+{% block title %}New Search - xspider{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-search"></i> New Search</h2>
+        <p class="text-muted">Find influencers by keywords and industry</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-body">
+                <form onsubmit="return submitSearch(event)">
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Search Keywords</strong></label>
+                        <textarea class="form-control" id="keywords" rows="3" required
+                            placeholder="Enter keywords related to the influencers you're looking for..."></textarea>
+                        <small class="text-muted">
+                            Examples: "crypto trader", "DeFi developer", "NFT artist"
+                        </small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label class="form-label"><strong>Industry</strong></label>
+                        <select class="form-select" id="industry">
+                            <option value="">Select an industry (optional)</option>
+                            <option value="crypto">Cryptocurrency / Web3</option>
+                            <option value="tech">Technology</option>
+                            <option value="finance">Finance / Trading</option>
+                            <option value="gaming">Gaming / Esports</option>
+                            <option value="fashion">Fashion / Beauty</option>
+                            <option value="food">Food / Lifestyle</option>
+                            <option value="fitness">Fitness / Health</option>
+                            <option value="travel">Travel</option>
+                            <option value="education">Education</option>
+                            <option value="entertainment">Entertainment</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="alert alert-info" id="estimate-info">
+                        <i class="bi bi-info-circle"></i> Click "Estimate Cost" to see expected credit usage
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary" onclick="estimateCost()">
+                            <i class="bi bi-calculator"></i> Estimate Cost
+                        </button>
+                        <button type="submit" class="btn btn-primary" id="submit-btn">
+                            <i class="bi bi-search"></i> Start Search
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-3">
+            <div class="card-header">
+                <i class="bi bi-coin"></i> Your Credits
+            </div>
+            <div class="card-body text-center">
+                <h2 class="mb-0" id="current-credits">{{ user.credits }}</h2>
+                <small class="text-muted">Available credits</small>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle"></i> Credit Costs
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <td>Seed Search</td>
+                            <td class="text-end">10 credits</td>
+                        </tr>
+                        <tr>
+                            <td>Crawling (per 100 users)</td>
+                            <td class="text-end">5 credits</td>
+                        </tr>
+                        <tr>
+                            <td>AI Audit (per user)</td>
+                            <td class="text-end">2 credits</td>
+                        </tr>
+                        <tr>
+                            <td>LLM Calls (per 1K tokens)</td>
+                            <td class="text-end">1 credit</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function estimateCost() {
+    const keywords = document.getElementById('keywords').value;
+    const industry = document.getElementById('industry').value;
+
+    if (!keywords.trim()) {
+        alert('Please enter search keywords');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/searches/estimate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keywords, industry })
+        });
+
+        if (response.ok) {
+            const estimate = await response.json();
+            document.getElementById('estimate-info').innerHTML = `
+                <i class="bi bi-calculator"></i> <strong>Estimated Cost: ${estimate.estimated_credits} credits</strong>
+                <ul class="mb-0 mt-2">
+                    <li>Seed search: ${estimate.breakdown.seed_search} credits</li>
+                    <li>Crawling: ${estimate.breakdown.crawling} credits</li>
+                    <li>AI audit: ${estimate.breakdown.ai_audit} credits</li>
+                </ul>
+            `;
+        }
+    } catch (error) {
+        alert('Error estimating cost');
+    }
+}
+
+async function submitSearch(event) {
+    event.preventDefault();
+
+    const keywords = document.getElementById('keywords').value;
+    const industry = document.getElementById('industry').value;
+    const submitBtn = document.getElementById('submit-btn');
+
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+
+    try {
+        // Create search
+        const response = await fetch('/api/searches/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keywords, industry })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.detail || 'Failed to create search');
+            return false;
+        }
+
+        const search = await response.json();
+
+        // Start the search
+        const startResponse = await fetch(`/api/searches/${search.id}/start`, {
+            method: 'POST'
+        });
+
+        if (startResponse.ok) {
+            window.location.href = `/searches/${search.id}`;
+        } else {
+            const error = await startResponse.json();
+            alert(error.detail || 'Failed to start search');
+        }
+    } catch (error) {
+        alert('Error creating search');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="bi bi-search"></i> Start Search';
+    }
+
+    return false;
+}
+</script>
+{% endblock %}
