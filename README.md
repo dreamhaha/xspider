@@ -1,6 +1,6 @@
 # xspider
 
-Twitter/X KOL Discovery System based on Social Network Analysis.
+Twitter/X KOL Discovery & Sales Conversion Platform based on Social Network Analysis.
 
 ## Features
 
@@ -23,6 +23,19 @@ Twitter/X KOL Discovery System based on Social Network Analysis.
 - **Authenticity Analysis**: Label commenters (real_user, bot, suspicious, etc.)
 - **DM Availability**: Check if users can receive direct messages
 - **Data Export**: Export to CSV/JSON formats
+
+### Sales Conversion Platform (NEW)
+- **CRM Kanban System**: Sales funnel with stages (Discovered → AI Qualified → To Contact → DM Sent → Replied → Converted)
+- **AI Opener Generator**: LLM-powered personalized DM icebreaker messages
+- **Sentiment & Intent Analysis**: Purchase intent scoring with pattern matching + LLM fallback
+- **Network Topology Visualization**: D3.js compatible social graph with PageRank-based node sizing
+- **Growth Anomaly Detection**: Follower spike monitoring with suspicious activity alerts
+- **Audience Overlap Analysis**: Jaccard index calculation for comparing KOL audiences
+
+### Enterprise Integration
+- **Webhook Integration**: HMAC-SHA256 signed payloads for Slack/Zapier/custom endpoints
+- **GDPR Compliance**: Data retention policies, export, and deletion (right to be forgotten)
+- **Credit Package System**: Starter/Growth/Pro/Enterprise tiers with bonus credits
 
 ## Installation
 
@@ -95,7 +108,7 @@ Default credentials (first run):
 │                         Admin Web UI                             │
 │              (FastAPI + Jinja2 + Bootstrap 5)                   │
 ├─────────────────────────────────────────────────────────────────┤
-│   Dashboard │ Accounts │ Proxies │ Users │ Monitors │ Search   │
+│ Dashboard │ Monitors │ CRM │ Analytics │ Webhooks │ Settings   │
 └─────────────────────────────────────────────────────────────────┘
         │                       │                       │
         ▼                       ▼                       ▼
@@ -108,17 +121,57 @@ Default credentials (first run):
 ┌───────────────┐      ┌───────────────┐      ┌───────────────┐
 │    Scraper    │      │     Graph     │      │      AI       │
 │   - Seed      │      │   - PageRank  │      │   - Auditor   │
-│   - Following │ ───▶ │   - Analysis  │ ───▶ │   - Labels    │
-│   - Monitor   │      │   - Hidden    │      │   - Authenticity
+│   - Following │ ───▶ │   - Analysis  │ ───▶ │   - Intent    │
+│   - Monitor   │      │   - Topology  │      │   - Opener    │
 └───────────────┘      └───────────────┘      └───────────────┘
         │                       │                       │
         └───────────────────────┼───────────────────────┘
                                 ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                   SQLite + NetworkX Storage                      │
-│     (Users, Accounts, Proxies, Searches, Monitors, Credits)     │
+│                         Data Layer                               │
+│     SQLite + NetworkX (Users, Leads, Packages, Webhooks, etc.)  │
 └─────────────────────────────────────────────────────────────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        ▼                       ▼                       ▼
+┌───────────────┐      ┌───────────────┐      ┌───────────────┐
+│   Webhooks    │      │    Privacy    │      │   Packages    │
+│ - Slack       │      │ - GDPR Export │      │ - Credits     │
+│ - Zapier      │      │ - Retention   │      │ - Purchases   │
+│ - Custom      │      │ - Deletion    │      │ - Bonuses     │
+└───────────────┘      └───────────────┘      └───────────────┘
 ```
+
+## Sales Funnel Stages
+
+| Stage | Description |
+|-------|-------------|
+| `discovered` | Initial discovery from commenter scraping |
+| `ai_qualified` | Passed AI authenticity and intent analysis |
+| `to_contact` | Ready for outreach, AI opener generated |
+| `dm_sent` | DM has been sent |
+| `replied` | Lead has replied to DM |
+| `converted` | Successfully converted to customer |
+| `not_interested` | Lead declined or unresponsive |
+
+## Webhook Event Types
+
+| Event | Trigger |
+|-------|---------|
+| `high_intent_lead` | Lead with intent score > 80 discovered |
+| `high_engagement_comment` | Comment with >10 likes detected |
+| `new_real_user` | Real user (authenticity > 70) identified |
+| `suspicious_growth` | Follower growth anomaly detected |
+| `dm_available` | User's DM becomes available |
+
+## Intent Labels
+
+| Label | Score Range | Description |
+|-------|-------------|-------------|
+| `high_intent` | 70-100 | Strong buying signals |
+| `medium_intent` | 40-69 | Moderate interest |
+| `low_intent` | 0-39 | General engagement |
+| `competitor_user` | N/A | Uses competitor products |
 
 ## Admin System Features
 
@@ -192,6 +245,56 @@ Default credentials (first run):
 - `POST /api/monitors/tweets/{id}/check-dm` - Check DM status
 - `POST /api/monitors/export-commenters` - Export data
 
+### CRM & Sales Funnel
+- `GET /api/crm/kanban` - Get kanban board with leads by stage
+- `GET /api/crm/kanban/stats` - Kanban statistics
+- `GET /api/crm/leads` - List leads with filters
+- `GET /api/crm/leads/search` - Search leads
+- `PUT /api/crm/leads/{id}/stage` - Update lead stage
+- `PUT /api/crm/leads/{id}/note` - Add note to lead
+- `PUT /api/crm/leads/{id}/tags` - Update lead tags
+- `GET /api/crm/leads/{id}/activities` - Get lead activity history
+- `POST /api/crm/convert-commenters/{tweet_id}` - Convert commenters to leads
+
+### Analytics & AI
+- `POST /api/analytics/intent/{user_id}` - Analyze purchase intent
+- `GET /api/analytics/growth/{influencer_id}` - Get growth history
+- `GET /api/analytics/growth/{influencer_id}/anomalies` - Detect growth anomalies
+- `POST /api/analytics/audience-overlap` - Compare audience overlap between KOLs
+- `POST /api/ai-openers/generate/{lead_id}` - Generate AI opener message
+- `POST /api/ai-openers/generate-batch` - Batch generate openers
+- `GET /api/ai-openers/templates` - List opener templates
+
+### Network Topology
+- `GET /api/topology/search/{search_id}` - Get search result topology (D3.js format)
+- `GET /api/topology/monitored` - Get monitored influencer topology
+- `GET /api/topology/export/{search_id}` - Export topology (json/gephi/cytoscape)
+
+### Webhooks
+- `POST /api/webhooks/` - Create webhook
+- `GET /api/webhooks/` - List webhooks
+- `PUT /api/webhooks/{id}` - Update webhook
+- `DELETE /api/webhooks/{id}` - Delete webhook
+- `POST /api/webhooks/{id}/test` - Test webhook
+- `GET /api/webhooks/{id}/logs` - Get webhook logs
+- `GET /api/webhooks/event-types` - List available event types
+
+### Credit Packages
+- `GET /api/packages/` - List available packages
+- `GET /api/packages/{id}` - Get package details
+- `POST /api/packages/{id}/purchase` - Purchase package
+- `GET /api/packages/purchases/history` - Purchase history
+- `POST /api/packages/admin/create` - Create package (admin)
+- `POST /api/packages/admin/seed` - Seed default packages (admin)
+
+### Privacy & GDPR
+- `GET /api/privacy/retention` - Get retention policy
+- `PUT /api/privacy/retention` - Set retention policy
+- `GET /api/privacy/export` - Export user data (GDPR)
+- `DELETE /api/privacy/delete-my-data` - Delete user data (GDPR)
+- `GET /api/privacy/stats` - Data storage statistics
+- `POST /api/privacy/admin/cleanup` - Cleanup expired data (admin)
+
 ## Algorithm: Hidden Influencer Detection
 
 The core algorithm identifies "hidden gems" - users with high PageRank but low follower counts:
@@ -222,22 +325,37 @@ src/xspider/
 ├── admin/                  # Admin management system
 │   ├── app.py             # FastAPI application
 │   ├── auth.py            # JWT authentication
-│   ├── models.py          # Database models
-│   ├── schemas.py         # Pydantic schemas
+│   ├── models.py          # Database models (50+ tables)
+│   ├── schemas.py         # Pydantic schemas (100+ schemas)
 │   ├── routes/            # API endpoints
-│   │   ├── auth.py
-│   │   ├── dashboard.py
-│   │   ├── monitors.py
+│   │   ├── auth.py        # Authentication
+│   │   ├── dashboard.py   # Dashboard stats
+│   │   ├── monitors.py    # Influencer monitoring
 │   │   ├── twitter_accounts.py
 │   │   ├── proxies.py
 │   │   ├── users.py
-│   │   └── searches.py
+│   │   ├── searches.py
+│   │   ├── crm.py         # CRM & sales funnel (NEW)
+│   │   ├── analytics.py   # Intent & growth analysis (NEW)
+│   │   ├── ai_openers.py  # AI opener generator (NEW)
+│   │   ├── webhooks.py    # Webhook integration (NEW)
+│   │   ├── packages.py    # Credit packages (NEW)
+│   │   ├── privacy.py     # GDPR compliance (NEW)
+│   │   └── topology.py    # Network visualization (NEW)
 │   ├── services/          # Business logic
 │   │   ├── influencer_monitor.py
 │   │   ├── commenter_scraper.py
 │   │   ├── authenticity_analyzer.py
 │   │   ├── dm_checker.py
-│   │   └── ...
+│   │   ├── crm_service.py         # CRM operations (NEW)
+│   │   ├── intent_analyzer.py     # Purchase intent (NEW)
+│   │   ├── growth_monitor.py      # Growth anomalies (NEW)
+│   │   ├── opener_generator.py    # AI DM openers (NEW)
+│   │   ├── audience_overlap.py    # KOL comparison (NEW)
+│   │   ├── webhook_service.py     # Webhook delivery (NEW)
+│   │   ├── package_service.py     # Credit packages (NEW)
+│   │   ├── privacy_service.py     # GDPR operations (NEW)
+│   │   └── topology_service.py    # Graph visualization (NEW)
 │   ├── templates/         # Jinja2 HTML templates
 │   └── static/            # CSS/JS assets
 ├── cli/                   # CLI commands

@@ -5,12 +5,13 @@
 1. [系统概述](#1-系统概述)
 2. [架构设计](#2-架构设计)
 3. [模块详解](#3-模块详解)
-4. [数据模型](#4-数据模型)
-5. [核心算法](#5-核心算法)
-6. [API 接口](#6-api-接口)
-7. [配置指南](#7-配置指南)
-8. [开发指南](#8-开发指南)
-9. [部署运维](#9-部署运维)
+4. [销售转化模块](#4-销售转化模块) *(NEW)*
+5. [数据模型](#5-数据模型)
+6. [核心算法](#6-核心算法)
+7. [API 接口](#7-api-接口)
+8. [配置指南](#8-配置指南)
+9. [开发指南](#9-开发指南)
+10. [部署运维](#10-部署运维)
 
 ---
 
@@ -29,6 +30,12 @@ xspider 是一个基于社交网络分析（SNA）的 Twitter/X KOL 发现系统
 | 权重计算 | PageRank 影响力排名 | NetworkX 图算法 |
 | 隐形大佬 | 高权重低粉丝用户发现 | 自定义 Hidden Score |
 | AI 审核 | LLM 判断行业相关性 | OpenAI / Claude API |
+| **CRM 销售漏斗** | 线索全流程管理 | Kanban + 状态机 |
+| **AI 破冰** | 个性化 DM 话术生成 | LLM + 模板系统 |
+| **意图分析** | 购买意图评分 | 正则 + LLM 混合 |
+| **增长监测** | 粉丝异常检测 | 时序分析 + 阈值检测 |
+| **受众重合** | KOL 粉丝对比 | Jaccard 相似度 |
+| **Webhook** | 事件推送集成 | HMAC 签名 + 异步投递 |
 
 ### 1.3 技术栈
 
@@ -817,9 +824,540 @@ class ContentAuditor:
 
 ---
 
-## 4. 数据模型
+## 4. 销售转化模块
 
-### 4.1 数据库 Schema
+### 4.1 CRM 服务 (`admin/services/crm_service.py`)
+
+```python
+class CRMService:
+    """CRM 销售漏斗服务"""
+
+    async def get_kanban_board(
+        self,
+        user_id: int,
+    ) -> dict[str, list[SalesLead]]:
+        """获取看板视图，按阶段分组"""
+        leads = await self._get_user_leads(user_id)
+        return self._group_by_stage(leads)
+
+    async def update_lead_stage(
+        self,
+        lead_id: int,
+        user_id: int,
+        new_stage: LeadStage,
+        notes: str | None = None,
+    ) -> SalesLead:
+        """更新线索阶段（支持看板拖拽）"""
+        lead = await self._get_lead(lead_id, user_id)
+        old_stage = lead.stage
+
+        lead.stage = new_stage
+        lead.stage_updated_at = datetime.utcnow()
+
+        # 记录活动日志
+        await self._log_activity(
+            lead_id=lead_id,
+            activity_type="stage_change",
+            old_value=old_stage.value,
+            new_value=new_stage.value,
+            description=notes,
+        )
+
+        return lead
+
+    async def bulk_convert_to_leads(
+        self,
+        user_id: int,
+        tweet_id: int,
+        min_authenticity_score: float = 50.0,
+        only_real_users: bool = True,
+        only_dm_available: bool = False,
+    ) -> int:
+        """批量将评论者转化为销售线索"""
+        # 获取符合条件的评论者
+        commenters = await self._get_qualified_commenters(
+            tweet_id,
+            min_authenticity_score,
+            only_real_users,
+            only_dm_available,
+        )
+
+        # 批量创建线索
+        count = 0
+        for commenter in commenters:
+            if not await self._lead_exists(user_id, commenter.twitter_user_id):
+                await self._create_lead_from_commenter(user_id, commenter)
+                count += 1
+
+        return count
+```
+
+### 4.2 意图分析器 (`admin/services/intent_analyzer.py`)
+
+```python
+class IntentAnalyzer:
+    """购买意图分析器"""
+
+    # 意图信号模式
+    INTENT_PATTERNS = {
+        "recommendation_seeking": {
+            "patterns": [
+                r"有人推荐", r"求推荐", r"有什么好用的",
+                r"recommend", r"suggestions?", r"looking for",
+            ],
+            "weight": 25,
+            "label": IntentLabel.HIGH_INTENT,
+        },
+        "price_inquiry": {
+            "patterns": [r"多少钱", r"价格", r"how much", r"pricing"],
+            "weight": 20,
+            "label": IntentLabel.HIGH_INTENT,
+        },
+        "pain_point": {
+            "patterns": [r"太麻烦", r"效率低", r"frustrated", r"struggle"],
+            "weight": 15,
+            "label": IntentLabel.MEDIUM_INTENT,
+        },
+        "competitor_mention": {
+            "patterns": [r"我用的是", r"currently using", r"switched from"],
+            "weight": -10,
+            "label": IntentLabel.COMPETITOR_USER,
+        },
+    }
+
+    async def analyze(
+        self,
+        text: str,
+        user_context: dict | None = None,
+        use_llm: bool = False,
+    ) -> IntentAnalysisResult:
+        """分析文本中的购买意图"""
+        # 1. 正则模式匹配（快速）
+        score = 50  # 基础分数
+        signals = []
+
+        for signal_type, config in self.INTENT_PATTERNS.items():
+            for pattern in config["patterns"]:
+                if re.search(pattern, text, re.IGNORECASE):
+                    score += config["weight"]
+                    signals.append({
+                        "type": signal_type,
+                        "pattern": pattern,
+                        "weight": config["weight"],
+                    })
+
+        # 2. 可选 LLM 深度分析
+        llm_analysis = None
+        if use_llm and self._llm_client:
+            llm_analysis = await self._llm_analyze(text, user_context)
+            score = (score + llm_analysis.score) / 2
+
+        # 3. 确定意图标签
+        label = self._score_to_label(score)
+
+        return IntentAnalysisResult(
+            score=max(0, min(100, score)),
+            label=label,
+            signals=signals,
+            llm_analysis=llm_analysis,
+        )
+
+    def _score_to_label(self, score: float) -> IntentLabel:
+        if score >= 70:
+            return IntentLabel.HIGH_INTENT
+        elif score >= 40:
+            return IntentLabel.MEDIUM_INTENT
+        else:
+            return IntentLabel.LOW_INTENT
+```
+
+### 4.3 AI 破冰生成器 (`admin/services/opener_generator.py`)
+
+```python
+class OpenerGenerator:
+    """AI 破冰话术生成器"""
+
+    TEMPLATES = {
+        "professional": """
+生成一条专业的商务私信开场白。
+
+目标用户: @{screen_name}
+用户简介: {bio}
+最近互动: {recent_comment}
+产品背景: {product_context}
+
+要求:
+- 专业但不生硬
+- 体现对用户背景的了解
+- 自然引出产品价值
+- 不超过280字符
+""",
+        "casual": """
+生成一条轻松友好的私信开场白...
+""",
+        "value_offer": """
+生成一条价值导向的私信开场白...
+""",
+    }
+
+    async def generate(
+        self,
+        lead: SalesLead,
+        template_type: str = "professional",
+        product_context: str | None = None,
+        custom_instructions: str | None = None,
+    ) -> OpenerResult:
+        """生成个性化破冰话术"""
+        # 1. 收集用户画像
+        profile = await self._build_user_profile(lead)
+
+        # 2. 构建 prompt
+        prompt = self.TEMPLATES.get(template_type, self.TEMPLATES["professional"])
+        prompt = prompt.format(
+            screen_name=lead.screen_name,
+            bio=lead.bio or "无",
+            recent_comment=profile.get("recent_comment", "无"),
+            product_context=product_context or "产品/服务",
+        )
+
+        if custom_instructions:
+            prompt += f"\n\n额外要求: {custom_instructions}"
+
+        # 3. 调用 LLM
+        response = await self._llm_client.complete(
+            system="你是一位专业的销售文案专家...",
+            user=prompt,
+            temperature=0.7,
+        )
+
+        # 4. 提取并验证结果
+        opener = self._extract_opener(response)
+
+        return OpenerResult(
+            opener=opener,
+            template_used=template_type,
+            personalization_points=profile.get("personalization_points", []),
+            confidence_score=self._calculate_confidence(opener, profile),
+        )
+```
+
+### 4.4 增长监测器 (`admin/services/growth_monitor.py`)
+
+```python
+class GrowthMonitor:
+    """粉丝增长异常监测"""
+
+    # 异常检测阈值
+    THRESHOLDS = {
+        "spike_percent_24h": 20,      # 24h增长超过20%
+        "spike_absolute_24h": 1000,   # 24h增长超过1000人
+        "drop_percent_24h": 10,       # 24h下降超过10%
+        "drop_absolute_24h": 500,     # 24h下降超过500人
+    }
+
+    async def take_snapshot(
+        self,
+        influencer_id: int,
+    ) -> FollowerSnapshot:
+        """记录粉丝快照"""
+        influencer = await self._get_influencer(influencer_id)
+
+        snapshot = FollowerSnapshot(
+            influencer_id=influencer_id,
+            followers_count=influencer.followers_count,
+            following_count=influencer.following_count,
+            tweet_count=influencer.tweet_count,
+            snapshot_at=datetime.utcnow(),
+        )
+
+        await self._save_snapshot(snapshot)
+        return snapshot
+
+    async def detect_anomalies(
+        self,
+        influencer_id: int,
+        lookback_hours: int = 24,
+    ) -> list[GrowthAnomaly]:
+        """检测增长异常"""
+        snapshots = await self._get_recent_snapshots(
+            influencer_id,
+            hours=lookback_hours,
+        )
+
+        if len(snapshots) < 2:
+            return []
+
+        anomalies = []
+        latest = snapshots[-1]
+        earliest = snapshots[0]
+
+        change = latest.followers_count - earliest.followers_count
+        change_percent = (change / earliest.followers_count) * 100
+
+        # 检测异常增长
+        if change > 0:
+            if (change_percent > self.THRESHOLDS["spike_percent_24h"]
+                and change > self.THRESHOLDS["spike_absolute_24h"]):
+                anomalies.append(GrowthAnomaly(
+                    influencer_id=influencer_id,
+                    anomaly_type="spike",
+                    change_amount=change,
+                    change_percent=change_percent,
+                    severity=self._calculate_severity(change_percent),
+                ))
+
+        # 检测异常下降
+        elif change < 0:
+            if (abs(change_percent) > self.THRESHOLDS["drop_percent_24h"]
+                and abs(change) > self.THRESHOLDS["drop_absolute_24h"]):
+                anomalies.append(GrowthAnomaly(
+                    influencer_id=influencer_id,
+                    anomaly_type="drop",
+                    change_amount=change,
+                    change_percent=change_percent,
+                    severity="medium",
+                ))
+
+        return anomalies
+```
+
+### 4.5 受众重合分析 (`admin/services/audience_overlap.py`)
+
+```python
+class AudienceOverlapService:
+    """受众重合度分析"""
+
+    async def analyze_overlap(
+        self,
+        influencer_ids: list[int],
+        sample_size: int = 1000,
+    ) -> list[OverlapResult]:
+        """分析多个KOL的粉丝重合度"""
+        results = []
+
+        # 两两比较
+        for i, id_a in enumerate(influencer_ids):
+            for id_b in influencer_ids[i + 1:]:
+                overlap = await self._calculate_overlap(id_a, id_b, sample_size)
+                results.append(overlap)
+
+        return sorted(results, key=lambda x: x.overlap_ratio, reverse=True)
+
+    async def _calculate_overlap(
+        self,
+        influencer_a: int,
+        influencer_b: int,
+        sample_size: int,
+    ) -> OverlapResult:
+        """计算两个KOL的粉丝重合度"""
+        # 获取粉丝样本
+        followers_a = set(await self._get_follower_sample(influencer_a, sample_size))
+        followers_b = set(await self._get_follower_sample(influencer_b, sample_size))
+
+        # Jaccard 相似度
+        intersection = followers_a & followers_b
+        union = followers_a | followers_b
+
+        overlap_ratio = len(intersection) / len(union) if union else 0
+
+        return OverlapResult(
+            influencer_a_id=influencer_a,
+            influencer_b_id=influencer_b,
+            overlap_count=len(intersection),
+            overlap_ratio=overlap_ratio,
+            unique_to_a=len(followers_a - followers_b),
+            unique_to_b=len(followers_b - followers_a),
+            sample_overlap_users=list(intersection)[:10],
+        )
+```
+
+### 4.6 Webhook 服务 (`admin/services/webhook_service.py`)
+
+```python
+class WebhookService:
+    """Webhook 事件推送服务"""
+
+    async def trigger_event(
+        self,
+        event_type: WebhookEventType,
+        payload: dict,
+        user_id: int,
+    ) -> list[WebhookLog]:
+        """触发 Webhook 事件"""
+        # 获取订阅此事件的所有 Webhook
+        webhooks = await self._get_subscribed_webhooks(user_id, event_type)
+
+        logs = []
+        for webhook in webhooks:
+            log = await self._deliver_webhook(webhook, event_type, payload)
+            logs.append(log)
+
+        return logs
+
+    async def _deliver_webhook(
+        self,
+        webhook: WebhookConfig,
+        event_type: WebhookEventType,
+        payload: dict,
+    ) -> WebhookLog:
+        """投递单个 Webhook"""
+        # 构建签名
+        timestamp = int(time.time())
+        signature = self._sign_payload(webhook.secret, payload)
+
+        headers = {
+            "Content-Type": "application/json",
+            "X-Webhook-Event": event_type.value,
+            "X-Webhook-Timestamp": str(timestamp),
+            "X-Webhook-Signature": f"sha256={signature}",
+            **(webhook.headers or {}),
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    webhook.url,
+                    json=payload,
+                    headers=headers,
+                )
+
+            success = 200 <= response.status_code < 300
+            return WebhookLog(
+                webhook_id=webhook.id,
+                event_type=event_type,
+                payload=payload,
+                response_status=response.status_code,
+                response_body=response.text[:1000],
+                success=success,
+            )
+
+        except Exception as e:
+            return WebhookLog(
+                webhook_id=webhook.id,
+                event_type=event_type,
+                payload=payload,
+                success=False,
+                error_message=str(e),
+            )
+
+    def _sign_payload(self, secret: str, payload: dict) -> str:
+        """HMAC-SHA256 签名"""
+        return hmac.new(
+            secret.encode(),
+            json.dumps(payload, sort_keys=True).encode(),
+            hashlib.sha256,
+        ).hexdigest()
+
+
+# 便捷函数
+async def notify_high_intent_lead(lead: SalesLead, db: AsyncSession):
+    """通知高意图线索"""
+    service = WebhookService(db)
+    await service.trigger_event(
+        WebhookEventType.HIGH_INTENT_LEAD,
+        {
+            "lead_id": lead.id,
+            "screen_name": lead.screen_name,
+            "intent_score": lead.intent_score,
+            "intent_label": lead.intent_label.value,
+        },
+        lead.user_id,
+    )
+```
+
+### 4.7 拓扑可视化 (`admin/services/topology_service.py`)
+
+```python
+class TopologyService:
+    """网络拓扑可视化服务"""
+
+    async def get_search_topology(
+        self,
+        search_id: int,
+        user_id: int,
+        max_nodes: int = 100,
+        min_pagerank: float = 0.0,
+    ) -> dict:
+        """获取搜索结果的网络拓扑"""
+        # 获取搜索结果中的影响者
+        influencers = await self._get_search_influencers(
+            search_id,
+            user_id,
+            max_nodes,
+            min_pagerank,
+        )
+
+        # 构建 D3.js 兼容格式
+        nodes = []
+        for inf in influencers:
+            nodes.append({
+                "id": inf.twitter_user_id,
+                "label": f"@{inf.screen_name}",
+                "size": self._calculate_node_size(inf.pagerank_score),
+                "color": self._relevance_to_color(inf.relevance_score),
+                "followers": inf.followers_count,
+                "pagerank": inf.pagerank_score,
+            })
+
+        # 获取边关系
+        edges = await self._get_edges(
+            [n["id"] for n in nodes],
+            search_id,
+        )
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "metadata": {
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+                "max_pagerank": max(n["pagerank"] for n in nodes) if nodes else 0,
+            },
+        }
+
+    async def export_graph_data(
+        self,
+        search_id: int | None,
+        user_id: int,
+        format: str = "json",
+    ) -> dict:
+        """导出图数据"""
+        topology = await self.get_search_topology(search_id, user_id)
+
+        if format == "gephi":
+            return self._convert_to_gephi(topology)
+        elif format == "cytoscape":
+            return self._convert_to_cytoscape(topology)
+        else:
+            return topology
+
+    def _convert_to_cytoscape(self, topology: dict) -> dict:
+        """转换为 Cytoscape.js 格式"""
+        elements = []
+
+        for node in topology["nodes"]:
+            elements.append({
+                "group": "nodes",
+                "data": {"id": node["id"], "label": node["label"]},
+            })
+
+        for edge in topology["edges"]:
+            elements.append({
+                "group": "edges",
+                "data": {
+                    "source": edge["source"],
+                    "target": edge["target"],
+                },
+            })
+
+        return {"elements": elements}
+```
+
+---
+
+## 5. 数据模型
+
+### 5.1 数据库 Schema
 
 ```sql
 -- 用户表
@@ -889,7 +1427,7 @@ CREATE INDEX idx_rankings_hidden ON rankings(hidden_score DESC);
 CREATE INDEX idx_audits_relevance ON audits(relevance_score DESC);
 ```
 
-### 4.2 关系图
+### 5.2 关系图
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -909,9 +1447,9 @@ CREATE INDEX idx_audits_relevance ON audits(relevance_score DESC);
 
 ---
 
-## 5. 核心算法
+## 6. 核心算法
 
-### 5.1 PageRank 算法
+### 6.1 PageRank 算法
 
 PageRank 通过链接结构计算节点重要性。在 KOL 发现场景中，被更多有影响力的用户关注的人，其权重更高。
 
@@ -952,7 +1490,7 @@ def compute_pagerank(graph: nx.DiGraph) -> dict[str, float]:
     )
 ```
 
-### 5.2 隐形大佬算法
+### 6.2 隐形大佬算法
 
 #### 核心思想
 
@@ -984,7 +1522,7 @@ Hidden Score = PageRank Score / log(Followers Count + 2)
 | Established | followers >= 50K | 已确立的大 V |
 | Potential | 其他 | 潜力股，待观察 |
 
-### 5.3 BFS 网络遍历
+### 6.3 BFS 网络遍历
 
 ```python
 算法: BFS_CRAWL(seeds, max_depth)
@@ -1027,9 +1565,9 @@ Hidden Score = PageRank Score / log(Followers Count + 2)
 
 ---
 
-## 6. API 接口
+## 7. API 接口
 
-### 6.1 内部 API
+### 7.1 内部 API
 
 #### TwitterGraphQLClient
 
@@ -1092,7 +1630,7 @@ class ContentAuditor:
     async def audit_and_save(user_id: str, industry: str) -> AuditResult
 ```
 
-### 6.2 CLI 命令
+### 7.2 CLI 命令
 
 ```bash
 # 种子采集
@@ -1125,9 +1663,9 @@ xspider export all --output-dir exports/
 
 ---
 
-## 7. 配置指南
+## 8. 配置指南
 
-### 7.1 环境变量
+### 8.1 环境变量
 
 创建 `.env` 文件:
 
@@ -1173,7 +1711,7 @@ LOG_LEVEL=INFO                 # DEBUG, INFO, WARNING, ERROR
 LOG_FORMAT=json                # json 或 console
 ```
 
-### 7.2 获取 Twitter Token
+### 8.2 获取 Twitter Token
 
 1. **浏览器登录 Twitter**
 2. **打开开发者工具 (F12)**
@@ -1187,7 +1725,7 @@ x-csrf-token: abc123...                                 -> ct0
 cookie: auth_token=xyz789...                           -> auth_token
 ```
 
-### 7.3 代理配置建议
+### 8.3 代理配置建议
 
 | 爬取规模 | 推荐代理类型 | 预估成本 |
 |---------|-------------|---------|
@@ -1202,9 +1740,9 @@ cookie: auth_token=xyz789...                           -> auth_token
 
 ---
 
-## 8. 开发指南
+## 9. 开发指南
 
-### 8.1 项目设置
+### 9.1 项目设置
 
 ```bash
 # 克隆项目
@@ -1225,7 +1763,7 @@ python -c "import asyncio; from xspider.storage import init_database; asyncio.ru
 pytest tests/ -v --cov=xspider
 ```
 
-### 8.2 代码规范
+### 9.2 代码规范
 
 ```bash
 # 格式化
@@ -1238,7 +1776,7 @@ ruff check src/ tests/
 mypy src/
 ```
 
-### 8.3 添加新的 GraphQL 端点
+### 9.3 添加新的 GraphQL 端点
 
 ```python
 # 1. 在 endpoints.py 中添加端点类型
@@ -1262,7 +1800,7 @@ async def new_endpoint_method(self, param: str) -> Result:
     return self._parse_response(response)
 ```
 
-### 8.4 添加新的 CLI 命令
+### 9.4 添加新的 CLI 命令
 
 ```python
 # 1. 创建命令文件 src/xspider/cli/commands/newcmd.py
@@ -1284,7 +1822,7 @@ from xspider.cli.commands import newcmd
 app.add_typer(newcmd.app, name="newcmd")
 ```
 
-### 8.5 测试
+### 9.5 测试
 
 ```python
 # tests/unit/test_pagerank.py
@@ -1320,9 +1858,9 @@ async def test_graph_builder_from_database(mock_database):
 
 ---
 
-## 9. 部署运维
+## 10. 部署运维
 
-### 9.1 性能优化
+### 10.1 性能优化
 
 #### Token 池大小
 
@@ -1352,7 +1890,7 @@ async def process_in_batches(user_ids: list[str], batch_size: int = 1000):
         gc.collect()  # 主动回收内存
 ```
 
-### 9.2 监控指标
+### 10.2 监控指标
 
 ```python
 # 关键指标
@@ -1382,7 +1920,7 @@ metrics = {
 }
 ```
 
-### 9.3 故障处理
+### 10.3 故障处理
 
 | 故障类型 | 检测方式 | 自动恢复 |
 |---------|---------|---------|
@@ -1391,7 +1929,7 @@ metrics = {
 | 代理封禁 | 连接超时 | 切换代理，冷却 30 分钟 |
 | 数据库锁 | SQLITE_BUSY | 指数退避重试 |
 
-### 9.4 数据备份
+### 10.4 数据备份
 
 ```bash
 # 定期备份 SQLite 数据库
@@ -1513,5 +2051,12 @@ python-dotenv = ">=1.0.0"
 
 ---
 
-*文档版本: 1.0.0*
-*最后更新: 2024-01*
+*文档版本: 2.0.0*
+*最后更新: 2024-02*
+
+### 更新日志
+
+| 版本 | 日期 | 更新内容 |
+|-----|------|---------|
+| 1.0.0 | 2024-01 | 初始版本 |
+| 2.0.0 | 2024-02 | 新增销售转化模块：CRM、AI破冰、意图分析、增长监测、受众重合、Webhook、拓扑可视化 |

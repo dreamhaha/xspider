@@ -8,9 +8,11 @@
 2. [核心功能：KOL发现](#2-核心功能kol发现)
 3. [后台管理系统](#3-后台管理系统)
 4. [网红监控系统](#4-网红监控系统)
-5. [数据模型](#5-数据模型)
-6. [API接口规范](#6-api接口规范)
-7. [技术架构](#7-技术架构)
+5. [销售转化平台](#5-销售转化平台) *(NEW)*
+6. [企业集成功能](#6-企业集成功能) *(NEW)*
+7. [数据模型](#7-数据模型)
+8. [API接口规范](#8-api接口规范)
+9. [技术架构](#9-技术架构)
 
 ---
 
@@ -563,9 +565,390 @@ return DMStatus.UNKNOWN
 
 ---
 
-## 5. 数据模型
+## 5. 销售转化平台
 
-### 5.1 ER图
+### 5.1 CRM看板系统
+
+#### 5.1.1 销售漏斗阶段
+
+| 阶段 | 值 | 说明 |
+|-----|-----|------|
+| DISCOVERED | discovered | 从评论中发现 |
+| AI_QUALIFIED | ai_qualified | 通过AI审核 |
+| TO_CONTACT | to_contact | 待联系，已生成破冰话术 |
+| DM_SENT | dm_sent | 已发送私信 |
+| REPLIED | replied | 已回复 |
+| CONVERTED | converted | 转化成功 |
+| NOT_INTERESTED | not_interested | 不感兴趣/无响应 |
+
+#### 5.1.2 销售线索数据模型
+
+```python
+class SalesLead:
+    id: int                       # 主键
+    user_id: int                  # 所属用户ID
+    twitter_user_id: str          # Twitter用户ID
+    screen_name: str              # 用户名
+    display_name: str             # 显示名称
+    bio: str                      # 简介
+    profile_image_url: str        # 头像
+    followers_count: int          # 粉丝数
+
+    # 意图分析
+    intent_score: float           # 购买意图分数 (0-100)
+    intent_label: IntentLabel     # high_intent | medium_intent | low_intent
+    intent_signals: JSON          # 意图信号详情
+
+    # 销售状态
+    stage: LeadStage              # 销售漏斗阶段
+    stage_updated_at: datetime    # 阶段更新时间
+    dm_status: DMStatus           # DM可用性
+
+    # AI破冰
+    opener_generated: bool        # 是否已生成破冰话术
+    opener_text: str              # 破冰话术内容
+    opener_template: str          # 使用的模板类型
+
+    # 来源追踪
+    source_tweet_id: int          # 来源推文ID
+    source_influencer: str        # 来源网红
+
+    # 管理
+    notes: str                    # 备注
+    tags: JSON                    # 标签数组
+    created_at: datetime
+    updated_at: datetime
+```
+
+#### 5.1.3 功能需求
+
+| 功能 | 接口 | 说明 |
+|-----|------|------|
+| 看板视图 | GET /api/crm/kanban | 按阶段分组的线索列表 |
+| 看板统计 | GET /api/crm/kanban/stats | 各阶段数量和转化率 |
+| 线索列表 | GET /api/crm/leads | 分页查询线索 |
+| 搜索线索 | GET /api/crm/leads/search | 多条件搜索 |
+| 更新阶段 | PUT /api/crm/leads/{id}/stage | 拖拽移动阶段 |
+| 添加备注 | PUT /api/crm/leads/{id}/note | 添加跟进备注 |
+| 更新标签 | PUT /api/crm/leads/{id}/tags | 打标签 |
+| 活动历史 | GET /api/crm/leads/{id}/activities | 查看操作记录 |
+| 批量转化 | POST /api/crm/convert-commenters/{tweet_id} | 评论者转线索 |
+
+### 5.2 AI破冰文案生成
+
+#### 5.2.1 功能描述
+
+使用LLM根据用户画像生成个性化的DM破冰话术。
+
+#### 5.2.2 模板类型
+
+| 模板 | 场景 | 示例 |
+|-----|------|------|
+| professional | 专业商务 | 注意到您在{领域}的专业见解... |
+| casual | 轻松友好 | 嘿！看到您关于{话题}的评论... |
+| value_offer | 价值导向 | 我们帮助像您这样的{角色}解决{痛点}... |
+| question | 问题引导 | 好奇您对{趋势}怎么看？ |
+
+#### 5.2.3 接口规范
+
+```python
+# 生成破冰话术
+POST /api/ai-openers/generate/{lead_id}
+Request:
+{
+  "template_type": "professional",  # 可选
+  "product_context": "AI数据分析工具",
+  "custom_instructions": "强调ROI"
+}
+Response:
+{
+  "opener": "Hi [Name], 注意到您在数据分析领域的专业见解...",
+  "template_used": "professional",
+  "personalization_points": ["bio关键词", "最近互动"],
+  "confidence_score": 0.85
+}
+
+# 批量生成
+POST /api/ai-openers/generate-batch
+Request:
+{
+  "lead_ids": [1, 2, 3],
+  "template_type": "value_offer"
+}
+```
+
+### 5.3 购买意图分析
+
+#### 5.3.1 意图信号
+
+| 信号类型 | 权重 | 示例模式 |
+|---------|------|---------|
+| 求推荐 | +25 | "有人推荐", "求推荐", "有什么好用的" |
+| 价格咨询 | +20 | "多少钱", "价格", "怎么收费" |
+| 痛点表达 | +15 | "太麻烦了", "效率太低", "有没有更好的" |
+| 竞品比较 | +10 | "A和B哪个好", "有没有替代" |
+| 使用竞品 | -10 | "我用的是X", "X挺好用" |
+
+#### 5.3.2 分析流程
+
+```
+1. 正则模式匹配 (快速)
+   - 匹配预定义的意图关键词
+   - 快速判断明显的高/低意图
+
+2. LLM深度分析 (可选)
+   - 分析评论上下文
+   - 理解隐含需求
+   - 生成详细意图报告
+```
+
+#### 5.3.3 意图标签
+
+| 标签 | 分数范围 | 说明 |
+|-----|---------|------|
+| HIGH_INTENT | 70-100 | 强烈购买信号 |
+| MEDIUM_INTENT | 40-69 | 中等兴趣 |
+| LOW_INTENT | 0-39 | 一般互动 |
+| COMPETITOR_USER | N/A | 使用竞品 |
+
+### 5.4 粉丝增长异常监测
+
+#### 5.4.1 功能描述
+
+监测网红粉丝数变化，检测异常增长（可能是刷粉）或异常下降（可能被封号）。
+
+#### 5.4.2 数据模型
+
+```python
+class FollowerSnapshot:
+    id: int
+    influencer_id: int
+    followers_count: int
+    following_count: int
+    tweet_count: int
+    snapshot_at: datetime
+
+class GrowthAnomaly:
+    id: int
+    influencer_id: int
+    anomaly_type: str        # spike | drop | suspicious
+    change_amount: int       # 变化量
+    change_percent: float    # 变化百分比
+    period_hours: int        # 时间窗口
+    severity: str            # low | medium | high | critical
+    detected_at: datetime
+    is_resolved: bool
+```
+
+#### 5.4.3 异常检测规则
+
+| 类型 | 条件 | 严重程度 |
+|-----|------|---------|
+| spike | 24h内增长>20% 且 >1000人 | high |
+| spike | 24h内增长>50% 且 >500人 | critical |
+| drop | 24h内下降>10% 且 >500人 | medium |
+| suspicious | 增长率远超历史平均 | low-high |
+
+### 5.5 竞品受众重合度分析
+
+#### 5.5.1 功能描述
+
+比较多个KOL的粉丝重合度，用于：
+- 选择合作KOL时避免重复覆盖
+- 发现竞品关注的核心用户群
+
+#### 5.5.2 算法
+
+```python
+# Jaccard相似度
+overlap_ratio = len(followers_A ∩ followers_B) / len(followers_A ∪ followers_B)
+
+# 输出
+{
+  "influencer_a": "@user_a",
+  "influencer_b": "@user_b",
+  "overlap_count": 1234,
+  "overlap_ratio": 0.15,  # 15%重合
+  "unique_to_a": 5000,
+  "unique_to_b": 6000,
+  "sample_overlap_users": ["@common1", "@common2", ...]
+}
+```
+
+### 5.6 网络拓扑可视化
+
+#### 5.6.1 功能描述
+
+生成D3.js兼容的社交网络图数据，支持：
+- 搜索结果网络图
+- 监控网红关系图
+- 导出为Gephi/Cytoscape格式
+
+#### 5.6.2 数据格式
+
+```json
+{
+  "nodes": [
+    {
+      "id": "12345",
+      "label": "@username",
+      "size": 50,         // 基于PageRank
+      "color": "#ff6600", // 基于相关性
+      "x": 100,
+      "y": 200
+    }
+  ],
+  "edges": [
+    {
+      "source": "12345",
+      "target": "67890",
+      "weight": 1.0
+    }
+  ],
+  "metadata": {
+    "node_count": 100,
+    "edge_count": 500,
+    "density": 0.05
+  }
+}
+```
+
+---
+
+## 6. 企业集成功能
+
+### 6.1 Webhook集成
+
+#### 6.1.1 事件类型
+
+| 事件 | 值 | 触发条件 |
+|-----|-----|---------|
+| 高意图线索 | high_intent_lead | 意图分数>80 |
+| 高互动评论 | high_engagement_comment | 评论点赞>10 |
+| 新真实用户 | new_real_user | 真实性分数>70 |
+| 异常增长 | suspicious_growth | 检测到粉丝异常 |
+| DM可用 | dm_available | 用户开放DM |
+
+#### 6.1.2 Webhook数据模型
+
+```python
+class WebhookConfig:
+    id: int
+    user_id: int
+    name: str                  # 配置名称
+    url: str                   # 回调URL
+    event_types: list[str]     # 订阅的事件类型
+    secret: str                # HMAC签名密钥
+    headers: dict              # 自定义请求头
+    is_active: bool
+    last_triggered_at: datetime
+    success_count: int
+    failure_count: int
+
+class WebhookLog:
+    id: int
+    webhook_id: int
+    event_type: str
+    payload: JSON
+    response_status: int
+    response_body: str
+    success: bool
+    error_message: str
+    created_at: datetime
+```
+
+#### 6.1.3 请求签名
+
+```python
+# HMAC-SHA256签名
+signature = hmac.new(
+    secret.encode(),
+    json.dumps(payload).encode(),
+    hashlib.sha256
+).hexdigest()
+
+# 请求头
+X-Webhook-Signature: sha256={signature}
+X-Webhook-Event: high_intent_lead
+X-Webhook-Timestamp: 1234567890
+```
+
+### 6.2 数据隐私与GDPR合规
+
+#### 6.2.1 数据保留策略
+
+```python
+class RetentionPolicy:
+    id: int
+    user_id: int
+    search_results_days: int     # 搜索结果保留天数
+    commenter_data_days: int     # 评论者数据保留天数
+    lead_data_days: int          # 线索数据保留天数
+    analytics_days: int          # 分析数据保留天数
+    webhook_logs_days: int       # Webhook日志保留天数
+    auto_delete_enabled: bool    # 是否自动删除
+```
+
+#### 6.2.2 GDPR功能
+
+| 功能 | 接口 | 说明 |
+|-----|------|------|
+| 数据导出 | GET /api/privacy/export | 导出用户所有数据 |
+| 数据删除 | DELETE /api/privacy/delete-my-data | 删除用户所有数据 |
+| 保留策略 | PUT /api/privacy/retention | 设置数据保留策略 |
+| 数据统计 | GET /api/privacy/stats | 查看数据存储统计 |
+
+### 6.3 积分套餐系统
+
+#### 6.3.1 套餐配置
+
+```python
+class CreditPackage:
+    id: int
+    name: str                  # 套餐名称
+    description: str           # 描述
+    credits: int               # 基础积分
+    bonus_credits: int         # 赠送积分
+    price: Decimal             # 价格
+    currency: str              # 货币 (USD/CNY)
+    features: list[str]        # 特性列表
+    is_popular: bool           # 是否热门
+    is_active: bool
+    sort_order: int
+```
+
+#### 6.3.2 默认套餐
+
+| 套餐 | 积分 | 赠送 | 价格 | 特性 |
+|-----|------|-----|------|------|
+| Starter | 1000 | 0 | $9.99 | 基础功能 |
+| Growth | 5000 | 500 | $39.99 | 优先支持 |
+| Pro | 15000 | 3000 | $99.99 | API访问 |
+| Enterprise | 50000 | 15000 | $299.99 | 专属客服 |
+
+#### 6.3.3 购买记录
+
+```python
+class CreditPurchase:
+    id: int
+    user_id: int
+    package_id: int
+    package_name: str
+    credits_purchased: int
+    bonus_credits: int
+    amount_paid: Decimal
+    currency: str
+    payment_method: str
+    payment_id: str
+    status: str               # pending | completed | refunded
+    created_at: datetime
+```
+
+---
+
+## 7. 数据模型
+
+### 7.1 ER图
 
 ```
 ┌─────────────────┐       ┌─────────────────┐
@@ -617,7 +1000,7 @@ return DMStatus.UNKNOWN
 └─────────────────┘
 ```
 
-### 5.2 索引设计
+### 7.2 索引设计
 
 ```sql
 -- 高频查询索引
@@ -632,9 +1015,9 @@ CREATE INDEX idx_commenter_score ON tweet_commenters(authenticity_score);
 
 ---
 
-## 6. API接口规范
+## 8. API接口规范
 
-### 6.1 通用规范
+### 8.1 通用规范
 
 #### 请求头
 ```
@@ -673,7 +1056,7 @@ page_size: int (默认20, 最大100)
 }
 ```
 
-### 6.2 错误码
+### 8.2 错误码
 
 | HTTP状态码 | 说明 |
 |-----------|------|
@@ -689,9 +1072,9 @@ page_size: int (默认20, 最大100)
 
 ---
 
-## 7. 技术架构
+## 9. 技术架构
 
-### 7.1 技术栈
+### 9.1 技术栈
 
 | 层级 | 技术 |
 |-----|------|
@@ -706,7 +1089,7 @@ page_size: int (默认20, 最大100)
 | 图计算 | NetworkX |
 | CLI | Typer |
 
-### 7.2 目录结构
+### 9.2 目录结构
 
 ```
 src/xspider/
@@ -754,7 +1137,7 @@ src/xspider/
     └── models.py
 ```
 
-### 7.3 部署架构
+### 9.3 部署架构
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -775,7 +1158,7 @@ src/xspider/
         └──────────┘  └──────────┘  └──────────┘
 ```
 
-### 7.4 配置项
+### 9.4 配置项
 
 ```bash
 # .env 配置文件
@@ -830,3 +1213,13 @@ xspider export --format csv --output results.csv
 | 1.0.0 | 2024-01 | 初始版本：KOL发现功能 |
 | 1.1.0 | 2024-02 | 新增：后台管理系统 |
 | 1.2.0 | 2024-02 | 新增：网红监控系统 |
+| 2.0.0 | 2024-02 | 重大升级：销售转化平台 |
+|       |        | - CRM看板系统（销售漏斗管理）|
+|       |        | - AI破冰文案生成器 |
+|       |        | - 购买意图分析 |
+|       |        | - 粉丝增长异常监测 |
+|       |        | - 竞品受众重合度分析 |
+|       |        | - 网络拓扑可视化 |
+|       |        | - Webhook集成（Slack/Zapier）|
+|       |        | - GDPR数据隐私合规 |
+|       |        | - 积分套餐系统 |
