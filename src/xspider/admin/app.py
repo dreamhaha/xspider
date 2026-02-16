@@ -103,6 +103,7 @@ def create_app() -> FastAPI:
     app.state.templates = templates
 
     # Import and include routers
+    from xspider.admin.routes.api_keys import router as api_keys_router
     from xspider.admin.routes.auth import router as auth_router
     from xspider.admin.routes.credits import router as credits_router
     from xspider.admin.routes.dashboard import router as dashboard_router
@@ -129,6 +130,7 @@ def create_app() -> FastAPI:
 
     # API routes
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(api_keys_router, prefix="/api/auth", tags=["API Keys"])
     app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
     app.include_router(accounts_router, prefix="/api/accounts", tags=["Twitter Accounts"])
     app.include_router(proxies_router, prefix="/api/proxies", tags=["Proxies"])

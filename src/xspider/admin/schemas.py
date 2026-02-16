@@ -10,11 +10,16 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from xspider.admin.models import (
     AccountStatus,
     AuthenticityLabel,
+    CommentStrategy,
+    ContentStatus,
     DMStatus,
+    InteractionMode,
     LLMProvider,
     MonitorStatus,
     ProxyProtocol,
     ProxyStatus,
+    RewriteTone,
+    RiskLevel,
     SearchStatus,
     TransactionType,
     UserRole,
@@ -47,6 +52,49 @@ class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+
+
+# ============================================================================
+# API Key Schemas
+# ============================================================================
+
+
+class APIKeyCreateRequest(BaseModel):
+    """Create API key request."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    expires_in_days: int | None = Field(default=None, ge=1, le=365)
+
+
+class APIKeyResponse(BaseModel):
+    """API key response schema (without secret)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    key_id: str
+    name: str
+    is_active: bool
+    created_at: datetime
+    last_used_at: datetime | None
+    expires_at: datetime | None
+
+
+class APIKeyCreatedResponse(BaseModel):
+    """API key created response (includes secret - shown once)."""
+
+    id: int
+    key_id: str
+    name: str
+    api_key: str  # Full key: xsp_<key_id>_sk_<secret>
+    created_at: datetime
+    expires_at: datetime | None
+
+
+class APIKeyListResponse(BaseModel):
+    """API key list response."""
+
+    keys: list[APIKeyResponse]
 
 
 class UserResponse(BaseModel):
@@ -832,6 +880,8 @@ class OpenerGenerateRequest(BaseModel):
 class OpenerResponse(BaseModel):
     """AI opener response."""
 
+    model_config = ConfigDict(protected_namespaces=())
+
     id: int
     target_screen_name: str
     target_twitter_id: str
@@ -1120,3 +1170,407 @@ class TopologyResponse(BaseModel):
     nodes: list[TopologyNodeResponse]
     edges: list[TopologyEdgeResponse]
     stats: dict[str, Any]
+
+
+# ============================================================================
+# Growth & Engagement System Schemas (运营增长系统)
+# ============================================================================
+
+
+# -------------------- Operating Account Schemas --------------------
+
+
+class OperatingAccountCreate(BaseModel):
+    """Create operating account request."""
+
+    twitter_account_id: int
+    niche_tags: list[str] | None = None
+    persona: str | None = None
+    daily_tweets_limit: int = Field(default=5, ge=1, le=20)
+    daily_replies_limit: int = Field(default=20, ge=1, le=100)
+    daily_dms_limit: int = Field(default=50, ge=1, le=200)
+    auto_reply_enabled: bool = False
+    interaction_mode: InteractionMode = InteractionMode.REVIEW
+    notes: str | None = None
+
+
+class OperatingAccountUpdate(BaseModel):
+    """Update operating account request."""
+
+    niche_tags: list[str] | None = None
+    persona: str | None = None
+    daily_tweets_limit: int | None = None
+    daily_replies_limit: int | None = None
+    daily_dms_limit: int | None = None
+    auto_reply_enabled: bool | None = None
+    interaction_mode: InteractionMode | None = None
+    is_active: bool | None = None
+    notes: str | None = None
+
+
+class OperatingAccountResponse(BaseModel):
+    """Operating account response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    twitter_account_id: int
+    twitter_user_id: str
+    screen_name: str
+    display_name: str | None
+    bio: str | None
+    followers_count: int
+    following_count: int
+    tweet_count: int
+    profile_image_url: str | None
+    niche_tags: str | None  # JSON array
+    persona: str | None
+    auto_reply_enabled: bool
+    interaction_mode: InteractionMode
+    daily_tweets_limit: int
+    daily_replies_limit: int
+    daily_dms_limit: int
+    tweets_today: int
+    replies_today: int
+    dms_today: int
+    risk_level: RiskLevel
+    is_shadowbanned: bool
+    shadowban_checked_at: datetime | None
+    total_tweets_posted: int
+    total_replies_posted: int
+    total_dms_sent: int
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class ShadowbanCheckResult(BaseModel):
+    """Shadowban check result."""
+
+    is_shadowbanned: bool
+    search_ban: bool
+    suggestion_ban: bool
+    reply_ban: bool
+    ghost_ban: bool
+    checked_at: datetime
+    details: str | None = None
+
+
+class OperatingAccountStats(BaseModel):
+    """Operating account daily statistics."""
+
+    account_id: int
+    screen_name: str
+    followers_count: int
+    followers_change: int
+    followers_change_pct: float
+    tweets_posted: int
+    replies_posted: int
+    engagement_received: int
+    date: str
+
+
+# -------------------- Content Rewrite Schemas --------------------
+
+
+class ContentRewriteCreate(BaseModel):
+    """Create content rewrite request."""
+
+    operating_account_id: int
+    source_content: str = Field(..., min_length=1, max_length=10000)
+    source_tweet_id: str | None = None
+    source_tweet_url: str | None = None
+    source_author: str | None = None
+    tone: RewriteTone = RewriteTone.PROFESSIONAL
+    custom_instructions: str | None = None
+
+
+class ContentRewriteResponse(BaseModel):
+    """Content rewrite response."""
+
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+
+    id: int
+    operating_account_id: int
+    source_content: str
+    source_tweet_id: str | None
+    source_tweet_url: str | None
+    source_author: str | None
+    tone: RewriteTone
+    custom_instructions: str | None
+    rewritten_content: str | None
+    generated_hashtags: str | None  # JSON array
+    thread_parts: str | None  # JSON array
+    status: ContentStatus
+    scheduled_at: datetime | None
+    published_at: datetime | None
+    published_tweet_id: str | None
+    error_message: str | None
+    likes_count: int
+    retweets_count: int
+    replies_count: int
+    model_used: str | None
+    tokens_used: int
+    credits_used: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ContentScheduleRequest(BaseModel):
+    """Schedule content for publishing."""
+
+    scheduled_at: datetime
+
+
+class ContentPublishResponse(BaseModel):
+    """Content publish response."""
+
+    success: bool
+    content_id: int
+    published_tweet_id: str | None = None
+    error_message: str | None = None
+    published_at: datetime | None = None
+
+
+# -------------------- KOL Watchlist Schemas --------------------
+
+
+class KOLWatchlistCreate(BaseModel):
+    """Create KOL watchlist entry request."""
+
+    operating_account_id: int
+    kol_screen_name: str = Field(..., min_length=1, max_length=50)
+    interaction_mode: InteractionMode = InteractionMode.REVIEW
+    relevance_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    preferred_strategies: list[CommentStrategy] | None = None
+
+
+class KOLWatchlistUpdate(BaseModel):
+    """Update KOL watchlist entry request."""
+
+    interaction_mode: InteractionMode | None = None
+    relevance_threshold: float | None = None
+    preferred_strategies: list[CommentStrategy] | None = None
+    is_active: bool | None = None
+
+
+class KOLWatchlistResponse(BaseModel):
+    """KOL watchlist response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    operating_account_id: int
+    kol_twitter_id: str
+    kol_screen_name: str
+    kol_display_name: str | None
+    kol_followers_count: int
+    kol_bio: str | None
+    interaction_mode: InteractionMode
+    relevance_threshold: float
+    preferred_strategies: str | None  # JSON array
+    is_active: bool
+    last_checked_at: datetime | None
+    last_interacted_at: datetime | None
+    tweets_checked: int
+    interactions_generated: int
+    interactions_approved: int
+    interactions_executed: int
+    created_at: datetime
+    updated_at: datetime
+
+
+# -------------------- Smart Interaction Schemas --------------------
+
+
+class SmartInteractionGenerateRequest(BaseModel):
+    """Generate smart interaction request."""
+
+    operating_account_id: int
+    target_tweet_url: str
+    mode: InteractionMode = InteractionMode.REVIEW
+
+
+class SmartInteractionResponse(BaseModel):
+    """Smart interaction response."""
+
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+
+    id: int
+    operating_account_id: int
+    kol_watchlist_id: int | None
+    target_tweet_id: str
+    target_tweet_url: str
+    target_tweet_content: str
+    target_author_id: str
+    target_author_name: str
+    relevance_score: float
+    relevance_reasoning: str | None
+    generated_comments: str | None  # JSON: {supplement: str, question: str, humor_meme: str}
+    selected_strategy: CommentStrategy | None
+    selected_comment: str | None
+    mode: InteractionMode
+    is_approved: bool
+    approved_at: datetime | None
+    is_executed: bool
+    executed_at: datetime | None
+    posted_tweet_id: str | None
+    error_message: str | None
+    likes_received: int
+    replies_received: int
+    model_used: str | None
+    tokens_used: int
+    credits_used: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SmartInteractionApproveRequest(BaseModel):
+    """Approve smart interaction request."""
+
+    selected_strategy: CommentStrategy
+    custom_comment: str | None = None
+
+
+class SmartInteractionExecuteResponse(BaseModel):
+    """Execute smart interaction response."""
+
+    success: bool
+    interaction_id: int
+    posted_tweet_id: str | None = None
+    error_message: str | None = None
+    executed_at: datetime | None = None
+
+
+class PendingInteractionsResponse(BaseModel):
+    """Pending interactions response."""
+
+    interactions: list[SmartInteractionResponse]
+    total: int
+
+
+class InteractionHistoryResponse(BaseModel):
+    """Interaction history response."""
+
+    interactions: list[SmartInteractionResponse]
+    total: int
+    page: int
+    page_size: int
+    total_executed: int
+    total_approved: int
+    success_rate: float
+
+
+# -------------------- Targeted Comment Schemas --------------------
+
+
+class TargetedCommentCreate(BaseModel):
+    """Create targeted comment request."""
+
+    target_tweet_url: str
+    comment_direction: str | None = None  # Comment guidance/instructions
+    strategy: CommentStrategy | None = None
+    main_account_id: int
+    is_matrix: bool = False
+    support_account_ids: list[int] | None = None  # For matrix commenting
+
+
+class TargetedCommentResponse(BaseModel):
+    """Targeted comment response."""
+
+    model_config = ConfigDict(from_attributes=True, protected_namespaces=())
+
+    id: int
+    target_tweet_url: str
+    target_tweet_id: str
+    target_tweet_content: str | None
+    target_author_id: str
+    target_author_name: str
+    comment_direction: str | None
+    strategy: CommentStrategy | None
+    is_matrix: bool
+    main_account_id: int | None
+    support_account_ids: str | None  # JSON array
+    can_comment: bool
+    permission_checked_at: datetime | None
+    permission_reason: str | None
+    generated_comment: str | None
+    support_comments: str | None  # JSON array
+    is_executed: bool
+    executed_at: datetime | None
+    posted_tweet_ids: str | None  # JSON array
+    error_message: str | None
+    total_likes: int
+    total_replies: int
+    model_used: str | None
+    tokens_used: int
+    credits_used: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class CommentPermissionCheckResponse(BaseModel):
+    """Comment permission check response."""
+
+    can_comment: bool
+    reason: str
+    tweet_id: str
+    author_name: str
+    tweet_content: str | None = None
+
+
+class TargetedCommentExecuteResponse(BaseModel):
+    """Execute targeted comment response."""
+
+    success: bool
+    comment_id: int
+    posted_tweet_ids: list[str] | None = None
+    error_message: str | None = None
+    executed_at: datetime | None = None
+
+
+class TargetedCommentHistoryResponse(BaseModel):
+    """Targeted comment history response."""
+
+    comments: list[TargetedCommentResponse]
+    total: int
+    page: int
+    page_size: int
+    total_executed: int
+    total_matrix: int
+
+
+# -------------------- Operating Follower Snapshot Schemas --------------------
+
+
+class OperatingFollowerSnapshotResponse(BaseModel):
+    """Operating account follower snapshot response."""
+
+    id: int
+    operating_account_id: int
+    followers_count: int
+    following_count: int
+    tweet_count: int
+    followers_change: int
+    followers_change_pct: float
+    tweets_posted: int
+    replies_posted: int
+    total_engagement: int
+    snapshot_at: datetime
+
+
+class OperatingGrowthSummaryResponse(BaseModel):
+    """Operating account growth summary."""
+
+    account_id: int
+    screen_name: str
+    current_followers: int
+    growth_7d: int
+    growth_7d_pct: float
+    growth_30d: int
+    growth_30d_pct: float
+    tweets_posted_7d: int
+    replies_posted_7d: int
+    avg_engagement: float
+    risk_level: RiskLevel
+    is_shadowbanned: bool

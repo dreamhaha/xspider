@@ -7,7 +7,12 @@
     "current_password_incorrect": "Current password is incorrect",
     "password_too_short": "New password must be at least 6 characters",
     "password_changed": "Password changed successfully",
-    "logged_out": "Successfully logged out"
+    "logged_out": "Successfully logged out",
+    "api_key_created": "API key created successfully",
+    "api_key_revoked": "API key revoked",
+    "api_key_not_found": "API key not found",
+    "api_key_invalid": "Invalid or expired API key",
+    "api_key_warning": "Store this API key securely. It will only be shown once."
   },
   "common": {
     "not_found": "Not found",

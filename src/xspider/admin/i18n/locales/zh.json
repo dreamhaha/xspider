@@ -7,7 +7,12 @@
     "current_password_incorrect": "当前密码不正确",
     "password_too_short": "新密码长度至少为6个字符",
     "password_changed": "密码修改成功",
-    "logged_out": "已成功退出登录"
+    "logged_out": "已成功退出登录",
+    "api_key_created": "API密钥创建成功",
+    "api_key_revoked": "API密钥已撤销",
+    "api_key_not_found": "API密钥不存在",
+    "api_key_invalid": "API密钥无效或已过期",
+    "api_key_warning": "请妥善保存此API密钥，它只会显示一次。"
   },
   "common": {
     "not_found": "未找到",

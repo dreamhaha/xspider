@@ -77,6 +77,12 @@ class TransactionType(str, PyEnum):
     INTENT_ANALYSIS = "intent_analysis"  # 意图分析
     AUDIENCE_OVERLAP = "audience_overlap"  # 受众重合度分析
     PACKAGE_PURCHASE = "package_purchase"  # 套餐购买
+    # Growth & Engagement System (运营增长系统)
+    AI_TWEET_REWRITE = "ai_tweet_rewrite"  # AI推文改写 (5积分)
+    SMART_INTERACTION_AUTO = "smart_interaction_auto"  # 智能互动-自动模式 (10积分)
+    SMART_INTERACTION_REVIEW = "smart_interaction_review"  # 智能互动-审核模式 (5积分)
+    TARGETED_COMMENT = "targeted_comment"  # 指定评论 (3积分)
+    ACCOUNT_HEALTH_CHECK = "account_health_check"  # 账号健康检测 (20积分)
 
 
 class LeadStage(str, PyEnum):
@@ -129,6 +135,53 @@ class LLMProvider(str, PyEnum):
     KIMI = "kimi"
 
 
+# ============================================================================
+# Growth & Engagement System Enums (运营增长系统枚举)
+# ============================================================================
+
+
+class RiskLevel(str, PyEnum):
+    """Account risk level enumeration (账号风险等级)."""
+
+    LOW = "low"  # 低风险
+    MEDIUM = "medium"  # 中风险
+    HIGH = "high"  # 高风险
+    CRITICAL = "critical"  # 严重风险
+
+
+class RewriteTone(str, PyEnum):
+    """Content rewrite tone enumeration (内容改写语气)."""
+
+    PROFESSIONAL = "professional"  # 专业权威
+    HUMOROUS = "humorous"  # 幽默风趣
+    CONTROVERSIAL = "controversial"  # 争议性观点
+    THREAD_STYLE = "thread_style"  # 推文串形式
+
+
+class ContentStatus(str, PyEnum):
+    """Content status enumeration (内容状态)."""
+
+    DRAFT = "draft"  # 草稿
+    SCHEDULED = "scheduled"  # 已排期
+    PUBLISHED = "published"  # 已发布
+    FAILED = "failed"  # 发布失败
+
+
+class InteractionMode(str, PyEnum):
+    """Smart interaction mode enumeration (智能互动模式)."""
+
+    AUTO = "auto"  # 自动发送
+    REVIEW = "review"  # 人工审核
+
+
+class CommentStrategy(str, PyEnum):
+    """Comment strategy enumeration (评论策略)."""
+
+    SUPPLEMENT = "supplement"  # 补充观点
+    QUESTION = "question"  # 提问引流
+    HUMOR_MEME = "humor_meme"  # 幽默Meme
+
+
 class AdminUser(Base):
     """Admin/user account model."""
 
@@ -161,6 +214,9 @@ class AdminUser(Base):
     created_proxies: Mapped[list["ProxyServer"]] = relationship(
         back_populates="created_by_user", foreign_keys="ProxyServer.created_by"
     )
+    api_keys: Mapped[list["APIKey"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         Index("idx_admin_users_username", "username"),
@@ -171,6 +227,34 @@ class AdminUser(Base):
     def is_admin(self) -> bool:
         """Check if user is an admin."""
         return self.role == UserRole.ADMIN
+
+
+class APIKey(Base):
+    """API key for programmatic access."""
+
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
+    )
+    key_id: Mapped[str] = mapped_column(String(8), unique=True, nullable=False)
+    secret_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    scopes: Mapped[str | None] = mapped_column(Text)  # JSON array of allowed scopes
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    # Relationships
+    user: Mapped["AdminUser"] = relationship(back_populates="api_keys")
+
+    __table_args__ = (
+        Index("idx_api_keys_user_id", "user_id"),
+        Index("idx_api_keys_key_id", "key_id"),
+        Index("idx_api_keys_is_active", "is_active"),
+    )
 
 
 class TwitterAccount(Base):
@@ -1037,3 +1121,405 @@ class DataRetentionPolicy(Base):
     last_run_at: Mapped[datetime | None] = mapped_column(DateTime)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+# ============================================================================
+# Growth & Engagement System Models (运营增长系统模型)
+# ============================================================================
+
+
+class OperatingAccount(Base):
+    """Operating account for content posting and engagement (运营账号).
+
+    Unlike scraping accounts, operating accounts are used for:
+    - Publishing tweets
+    - Replying to KOL tweets
+    - Sending DMs
+    """
+
+    __tablename__ = "operating_accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
+    )
+    twitter_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("twitter_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Twitter profile info (cached from account)
+    twitter_user_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    screen_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String(100))
+    bio: Mapped[str | None] = mapped_column(Text)
+    followers_count: Mapped[int] = mapped_column(Integer, default=0)
+    following_count: Mapped[int] = mapped_column(Integer, default=0)
+    tweet_count: Mapped[int] = mapped_column(Integer, default=0)
+    profile_image_url: Mapped[str | None] = mapped_column(String(512))
+
+    # Operating settings (运营配置)
+    niche_tags: Mapped[str | None] = mapped_column(Text)  # JSON array: ["AI", "Web3", "DeFi"]
+    persona: Mapped[str | None] = mapped_column(Text)  # 账号人设描述
+    auto_reply_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    interaction_mode: Mapped[InteractionMode] = mapped_column(
+        Enum(InteractionMode), default=InteractionMode.REVIEW, nullable=False
+    )
+
+    # Daily limits (每日限额)
+    daily_tweets_limit: Mapped[int] = mapped_column(Integer, default=5)
+    daily_replies_limit: Mapped[int] = mapped_column(Integer, default=20)
+    daily_dms_limit: Mapped[int] = mapped_column(Integer, default=50)
+
+    # Today's usage (今日使用量)
+    tweets_today: Mapped[int] = mapped_column(Integer, default=0)
+    replies_today: Mapped[int] = mapped_column(Integer, default=0)
+    dms_today: Mapped[int] = mapped_column(Integer, default=0)
+    last_reset_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    # Risk assessment (风险评估)
+    risk_level: Mapped[RiskLevel] = mapped_column(
+        Enum(RiskLevel), default=RiskLevel.LOW, nullable=False
+    )
+    is_shadowbanned: Mapped[bool] = mapped_column(Boolean, default=False)
+    shadowban_checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    shadowban_details: Mapped[str | None] = mapped_column(Text)  # JSON: {search: bool, recommend: bool, reply: bool}
+
+    # Statistics (统计)
+    total_tweets_posted: Mapped[int] = mapped_column(Integer, default=0)
+    total_replies_posted: Mapped[int] = mapped_column(Integer, default=0)
+    total_dms_sent: Mapped[int] = mapped_column(Integer, default=0)
+    total_engagement_received: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    owner: Mapped["AdminUser"] = relationship()
+    twitter_account: Mapped["TwitterAccount"] = relationship()
+    content_rewrites: Mapped[list["ContentRewrite"]] = relationship(
+        back_populates="operating_account", cascade="all, delete-orphan"
+    )
+    smart_interactions: Mapped[list["SmartInteraction"]] = relationship(
+        back_populates="operating_account", cascade="all, delete-orphan"
+    )
+    kol_watchlist: Mapped[list["KOLWatchlist"]] = relationship(
+        back_populates="operating_account", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        Index("idx_operating_accounts_user_id", "user_id"),
+        Index("idx_operating_accounts_twitter_account_id", "twitter_account_id"),
+        Index("idx_operating_accounts_risk_level", "risk_level"),
+        Index("idx_operating_accounts_is_active", "is_active"),
+    )
+
+
+class ContentRewrite(Base):
+    """AI-rewritten content for publishing (AI改写内容)."""
+
+    __tablename__ = "content_rewrites"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
+    )
+    operating_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("operating_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Source content (源内容)
+    source_tweet_id: Mapped[str | None] = mapped_column(String(50))  # 原推文ID
+    source_tweet_url: Mapped[str | None] = mapped_column(String(255))
+    source_content: Mapped[str] = mapped_column(Text, nullable=False)
+    source_author: Mapped[str | None] = mapped_column(String(50))
+
+    # Rewrite settings (改写设置)
+    tone: Mapped[RewriteTone] = mapped_column(
+        Enum(RewriteTone), default=RewriteTone.PROFESSIONAL, nullable=False
+    )
+    custom_instructions: Mapped[str | None] = mapped_column(Text)  # 自定义改写指令
+
+    # Generated content (生成内容)
+    rewritten_content: Mapped[str | None] = mapped_column(Text)
+    generated_hashtags: Mapped[str | None] = mapped_column(Text)  # JSON array
+    thread_parts: Mapped[str | None] = mapped_column(Text)  # JSON array (for thread style)
+
+    # Status (状态)
+    status: Mapped[ContentStatus] = mapped_column(
+        Enum(ContentStatus), default=ContentStatus.DRAFT, nullable=False
+    )
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime)
+    published_tweet_id: Mapped[str | None] = mapped_column(String(50))
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Engagement tracking (after publishing)
+    likes_count: Mapped[int] = mapped_column(Integer, default=0)
+    retweets_count: Mapped[int] = mapped_column(Integer, default=0)
+    replies_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_engagement_check: Mapped[datetime | None] = mapped_column(DateTime)
+
+    # LLM metadata
+    model_used: Mapped[str | None] = mapped_column(String(50))
+    tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    credits_used: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    owner: Mapped["AdminUser"] = relationship()
+    operating_account: Mapped["OperatingAccount"] = relationship(back_populates="content_rewrites")
+
+    __table_args__ = (
+        Index("idx_content_rewrites_user_id", "user_id"),
+        Index("idx_content_rewrites_operating_account_id", "operating_account_id"),
+        Index("idx_content_rewrites_status", "status"),
+        Index("idx_content_rewrites_scheduled_at", "scheduled_at"),
+    )
+
+
+class KOLWatchlist(Base):
+    """KOL watchlist for smart interaction monitoring (KOL监控列表)."""
+
+    __tablename__ = "kol_watchlists"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
+    )
+    operating_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("operating_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # KOL info
+    kol_twitter_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    kol_screen_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    kol_display_name: Mapped[str | None] = mapped_column(String(100))
+    kol_followers_count: Mapped[int] = mapped_column(Integer, default=0)
+    kol_bio: Mapped[str | None] = mapped_column(Text)
+
+    # Interaction settings (互动设置)
+    interaction_mode: Mapped[InteractionMode] = mapped_column(
+        Enum(InteractionMode), default=InteractionMode.REVIEW, nullable=False
+    )
+    relevance_threshold: Mapped[float] = mapped_column(Float, default=0.8)  # 相关性阈值
+    preferred_strategies: Mapped[str | None] = mapped_column(Text)  # JSON array of CommentStrategy
+
+    # Monitoring status
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_interacted_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    # Statistics
+    tweets_checked: Mapped[int] = mapped_column(Integer, default=0)
+    interactions_generated: Mapped[int] = mapped_column(Integer, default=0)
+    interactions_approved: Mapped[int] = mapped_column(Integer, default=0)
+    interactions_executed: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    owner: Mapped["AdminUser"] = relationship()
+    operating_account: Mapped["OperatingAccount"] = relationship(back_populates="kol_watchlist")
+
+    __table_args__ = (
+        Index("idx_kol_watchlists_user_id", "user_id"),
+        Index("idx_kol_watchlists_operating_account_id", "operating_account_id"),
+        Index("idx_kol_watchlists_kol_twitter_id", "kol_twitter_id"),
+        Index("idx_kol_watchlists_is_active", "is_active"),
+    )
+
+
+class SmartInteraction(Base):
+    """Smart interaction record for KOL engagement (智能互动记录)."""
+
+    __tablename__ = "smart_interactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
+    )
+    operating_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("operating_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    kol_watchlist_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("kol_watchlists.id", ondelete="SET NULL")
+    )
+
+    # Target tweet info (目标推文)
+    target_tweet_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_tweet_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_tweet_content: Mapped[str] = mapped_column(Text, nullable=False)
+    target_author_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_author_name: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Relevance analysis (相关性分析)
+    relevance_score: Mapped[float] = mapped_column(Float, default=0.0)
+    relevance_reasoning: Mapped[str | None] = mapped_column(Text)
+
+    # Generated comments (生成的评论 - 3种策略)
+    generated_comments: Mapped[str | None] = mapped_column(Text)  # JSON: {supplement: str, question: str, humor_meme: str}
+    selected_strategy: Mapped[CommentStrategy | None] = mapped_column(Enum(CommentStrategy))
+    selected_comment: Mapped[str | None] = mapped_column(Text)
+
+    # Execution mode (执行模式)
+    mode: Mapped[InteractionMode] = mapped_column(
+        Enum(InteractionMode), default=InteractionMode.REVIEW, nullable=False
+    )
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime)
+    approved_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="SET NULL")
+    )
+
+    # Execution status (执行状态)
+    is_executed: Mapped[bool] = mapped_column(Boolean, default=False)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    posted_tweet_id: Mapped[str | None] = mapped_column(String(50))
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Engagement tracking (after posting)
+    likes_received: Mapped[int] = mapped_column(Integer, default=0)
+    replies_received: Mapped[int] = mapped_column(Integer, default=0)
+    last_engagement_check: Mapped[datetime | None] = mapped_column(DateTime)
+
+    # LLM metadata
+    model_used: Mapped[str | None] = mapped_column(String(50))
+    tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    credits_used: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    owner: Mapped["AdminUser"] = relationship(foreign_keys=[user_id])
+    operating_account: Mapped["OperatingAccount"] = relationship(back_populates="smart_interactions")
+    kol_watchlist: Mapped["KOLWatchlist | None"] = relationship()
+    approver: Mapped["AdminUser | None"] = relationship(foreign_keys=[approved_by])
+
+    __table_args__ = (
+        Index("idx_smart_interactions_user_id", "user_id"),
+        Index("idx_smart_interactions_operating_account_id", "operating_account_id"),
+        Index("idx_smart_interactions_target_tweet_id", "target_tweet_id"),
+        Index("idx_smart_interactions_is_approved", "is_approved"),
+        Index("idx_smart_interactions_is_executed", "is_executed"),
+    )
+
+
+class TargetedComment(Base):
+    """Targeted comment on specific tweets (指定评论)."""
+
+    __tablename__ = "targeted_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Target tweet (目标推文)
+    target_tweet_url: Mapped[str] = mapped_column(String(255), nullable=False)
+    target_tweet_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_tweet_content: Mapped[str | None] = mapped_column(Text)
+    target_author_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_author_name: Mapped[str] = mapped_column(String(50), nullable=False)
+
+    # Comment settings (评论设置)
+    comment_direction: Mapped[str | None] = mapped_column(Text)  # 评论方向/指令
+    strategy: Mapped[CommentStrategy | None] = mapped_column(Enum(CommentStrategy))
+
+    # Matrix commenting (矩阵评论)
+    is_matrix: Mapped[bool] = mapped_column(Boolean, default=False)
+    main_account_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("operating_accounts.id", ondelete="SET NULL")
+    )
+    support_account_ids: Mapped[str | None] = mapped_column(Text)  # JSON array of account IDs
+
+    # Permission check (权限检查)
+    can_comment: Mapped[bool] = mapped_column(Boolean, default=False)
+    permission_checked_at: Mapped[datetime | None] = mapped_column(DateTime)
+    permission_reason: Mapped[str | None] = mapped_column(String(255))
+
+    # Generated comment (生成的评论)
+    generated_comment: Mapped[str | None] = mapped_column(Text)
+    support_comments: Mapped[str | None] = mapped_column(Text)  # JSON array for matrix mode
+
+    # Execution status
+    is_executed: Mapped[bool] = mapped_column(Boolean, default=False)
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    posted_tweet_ids: Mapped[str | None] = mapped_column(Text)  # JSON array of posted reply IDs
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Engagement tracking
+    total_likes: Mapped[int] = mapped_column(Integer, default=0)
+    total_replies: Mapped[int] = mapped_column(Integer, default=0)
+    last_engagement_check: Mapped[datetime | None] = mapped_column(DateTime)
+
+    # LLM metadata
+    model_used: Mapped[str | None] = mapped_column(String(50))
+    tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    credits_used: Mapped[int] = mapped_column(Integer, default=0)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+
+    # Relationships
+    owner: Mapped["AdminUser"] = relationship()
+    main_account: Mapped["OperatingAccount | None"] = relationship()
+
+    __table_args__ = (
+        Index("idx_targeted_comments_user_id", "user_id"),
+        Index("idx_targeted_comments_target_tweet_id", "target_tweet_id"),
+        Index("idx_targeted_comments_is_executed", "is_executed"),
+        Index("idx_targeted_comments_is_matrix", "is_matrix"),
+    )
+
+
+class OperatingFollowerSnapshot(Base):
+    """Follower snapshots for operating accounts (运营账号粉丝快照)."""
+
+    __tablename__ = "operating_follower_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    operating_account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("operating_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Metrics snapshot
+    followers_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    following_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    tweet_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    # Growth metrics (compared to previous snapshot)
+    followers_change: Mapped[int] = mapped_column(Integer, default=0)
+    followers_change_pct: Mapped[float] = mapped_column(Float, default=0.0)
+
+    # Engagement metrics (past 24h)
+    tweets_posted: Mapped[int] = mapped_column(Integer, default=0)
+    replies_posted: Mapped[int] = mapped_column(Integer, default=0)
+    total_engagement: Mapped[int] = mapped_column(Integer, default=0)  # likes + retweets + replies received
+
+    snapshot_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    # Relationships
+    operating_account: Mapped["OperatingAccount"] = relationship()
+
+    __table_args__ = (
+        Index("idx_op_follower_snapshots_account_id", "operating_account_id"),
+        Index("idx_op_follower_snapshots_snapshot_at", "snapshot_at"),
+    )

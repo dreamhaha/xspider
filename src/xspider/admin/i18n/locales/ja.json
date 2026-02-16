@@ -7,7 +7,12 @@
     "current_password_incorrect": "現在のパスワードが正しくありません",
     "password_too_short": "新しいパスワードは6文字以上必要です",
     "password_changed": "パスワードを変更しました",
-    "logged_out": "ログアウトしました"
+    "logged_out": "ログアウトしました",
+    "api_key_created": "APIキーを作成しました",
+    "api_key_revoked": "APIキーを無効化しました",
+    "api_key_not_found": "APIキーが見つかりません",
+    "api_key_invalid": "APIキーが無効または期限切れです",
+    "api_key_warning": "このAPIキーは安全に保管してください。一度のみ表示されます。"
   },
   "common": {
     "not_found": "見つかりません",
