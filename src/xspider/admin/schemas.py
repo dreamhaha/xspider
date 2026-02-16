@@ -636,3 +636,487 @@ class CommenterExportRequest(BaseModel):
     format: str = Field(default="csv", pattern="^(csv|json)$")
     filters: CommenterFilterParams | None = None
     include_analysis: bool = True
+
+
+# ============================================================================
+# CRM and Sales Lead Schemas (销售线索)
+# ============================================================================
+
+
+class SalesLeadResponse(BaseModel):
+    """Sales lead response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    twitter_user_id: str
+    screen_name: str
+    display_name: str | None
+    bio: str | None
+    profile_image_url: str | None
+    followers_count: int
+    authenticity_score: float
+    intent_score: float
+    stage: str
+    dm_status: str | None
+    intent_label: str | None
+    notes: str | None
+    tags: str | None
+    opener_generated: bool
+    opener_text: str | None
+    source_influencer: str | None
+    created_at: datetime
+    stage_updated_at: datetime | None
+
+
+class LeadStageUpdate(BaseModel):
+    """Update lead stage request."""
+
+    new_stage: str
+    notes: str | None = None
+
+
+class LeadNoteUpdate(BaseModel):
+    """Update lead note request."""
+
+    note: str
+
+
+class LeadTagsUpdate(BaseModel):
+    """Update lead tags request."""
+
+    tags: list[str]
+
+
+class LeadActivityResponse(BaseModel):
+    """Lead activity response."""
+
+    id: int
+    activity_type: str
+    old_value: str | None
+    new_value: str | None
+    description: str | None
+    created_at: datetime
+
+
+class KanbanBoardResponse(BaseModel):
+    """Kanban board response."""
+
+    board: dict[str, list[SalesLeadResponse]]
+
+
+class KanbanStatsResponse(BaseModel):
+    """Kanban statistics response."""
+
+    discovered: int
+    ai_qualified: int
+    to_contact: int
+    dm_sent: int
+    replied: int
+    converted: int
+    archived: int
+    high_intent: int
+    dm_available: int
+    conversion_rate: float
+
+
+# ============================================================================
+# Intent Analysis Schemas (意图分析)
+# ============================================================================
+
+
+class IntentAnalysisResult(BaseModel):
+    """Intent analysis result."""
+
+    intent_label: str
+    sentiment: str
+    confidence: float
+    keywords: list[str]
+    is_high_intent: bool
+    reasoning: str
+
+
+class IntentSummaryResponse(BaseModel):
+    """Intent summary for a tweet."""
+
+    tweet_id: int
+    total_analyzed: int
+    high_intent_count: int
+    high_intent_rate: float
+    intent_distribution: dict[str, int]
+    sentiment_distribution: dict[str, int]
+
+
+class HighIntentCommenterResponse(BaseModel):
+    """High intent commenter response."""
+
+    id: int
+    screen_name: str
+    display_name: str | None
+    comment_text: str
+    intent_label: str
+    sentiment: str
+    intent_confidence: float
+    intent_keywords: str | None
+    dm_status: str | None
+    followers_count: int
+
+
+# ============================================================================
+# Growth Monitoring Schemas (增长监控)
+# ============================================================================
+
+
+class FollowerSnapshotResponse(BaseModel):
+    """Follower snapshot response."""
+
+    id: int
+    followers_count: int
+    following_count: int
+    tweet_count: int
+    avg_likes: float
+    avg_retweets: float
+    avg_replies: float
+    followers_change: int
+    followers_change_pct: float
+    is_anomaly: bool
+    anomaly_type: str | None
+    anomaly_score: float
+    snapshot_at: datetime
+
+
+class GrowthSummaryResponse(BaseModel):
+    """Growth summary response."""
+
+    influencer_id: int
+    current_followers: int
+    growth_7d: int
+    growth_7d_pct: float
+    growth_30d: int
+    growth_30d_pct: float
+    avg_likes: float
+    avg_retweets: float
+    anomaly_count: int
+    latest_snapshot_at: datetime | None
+
+
+class GrowthAnomalyResponse(BaseModel):
+    """Growth anomaly response."""
+
+    influencer_id: int
+    screen_name: str
+    display_name: str | None
+    followers_count: int
+    followers_change: int
+    followers_change_pct: float
+    anomaly_type: str
+    anomaly_score: float
+    snapshot_at: datetime
+
+
+# ============================================================================
+# AI Opener Schemas (AI破冰文案)
+# ============================================================================
+
+
+class OpenerGenerateRequest(BaseModel):
+    """Generate opener request."""
+
+    target_screen_name: str
+    target_twitter_id: str
+    lead_id: int | None = None
+    commenter_id: int | None = None
+    num_openers: int = Field(default=3, ge=1, le=5)
+
+
+class OpenerResponse(BaseModel):
+    """AI opener response."""
+
+    id: int
+    target_screen_name: str
+    target_twitter_id: str
+    openers: str  # JSON array of openers
+    user_bio: str | None
+    user_interests: str | None
+    model_used: str
+    tokens_used: int
+    credits_used: int
+    is_used: bool
+    used_at: datetime | None
+    selected_opener: int | None
+    response_received: bool
+    created_at: datetime
+
+
+class OpenerStatsResponse(BaseModel):
+    """Opener statistics response."""
+
+    total_generated: int
+    total_used: int
+    total_responses: int
+    response_rate: float
+    credits_used: int
+
+
+# ============================================================================
+# Audience Overlap Schemas (受众重合)
+# ============================================================================
+
+
+class AudienceOverlapRequest(BaseModel):
+    """Audience overlap analysis request."""
+
+    influencer_a_id: int
+    influencer_b_id: int
+
+
+class AudienceOverlapResponse(BaseModel):
+    """Audience overlap analysis response."""
+
+    id: int
+    influencer_a_screen_name: str
+    influencer_b_screen_name: str
+    followers_a_count: int
+    followers_b_count: int
+    overlap_count: int
+    unique_a_count: int
+    unique_b_count: int
+    jaccard_index: float
+    overlap_percentage_a: float
+    overlap_percentage_b: float
+    sample_overlap_users: str | None  # JSON array
+    credits_used: int
+    created_at: datetime
+
+
+class SimilarAudienceResponse(BaseModel):
+    """Similar audience response."""
+
+    influencer_id: int
+    screen_name: str
+    overlap_percentage: float
+    jaccard_index: float
+    overlap_count: int
+    analysis_id: int
+
+
+# ============================================================================
+# Webhook Schemas (Webhook集成)
+# ============================================================================
+
+
+class WebhookCreateRequest(BaseModel):
+    """Create webhook request."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    url: str = Field(..., min_length=10)
+    event_types: list[str]
+    secret: str | None = None
+    headers: dict[str, str] | None = None
+
+
+class WebhookUpdateRequest(BaseModel):
+    """Update webhook request."""
+
+    name: str | None = None
+    url: str | None = None
+    event_types: list[str] | None = None
+    is_active: bool | None = None
+    headers: dict[str, str] | None = None
+
+
+class WebhookResponse(BaseModel):
+    """Webhook response."""
+
+    id: int
+    name: str
+    url: str
+    event_types: str  # JSON array
+    is_active: bool
+    last_triggered_at: datetime | None
+    success_count: int
+    failure_count: int
+    created_at: datetime
+
+
+class WebhookLogResponse(BaseModel):
+    """Webhook log response."""
+
+    id: int
+    event_type: str
+    success: bool
+    response_status: int
+    response_body: str | None
+    error_message: str | None
+    created_at: datetime
+
+
+class WebhookStatsResponse(BaseModel):
+    """Webhook statistics response."""
+
+    total_webhooks: int
+    active_webhooks: int
+    total_triggers: int
+    total_success: int
+    total_failure: int
+    success_rate: float
+
+
+# ============================================================================
+# Credit Package Schemas (积分套餐)
+# ============================================================================
+
+
+class CreditPackageCreate(BaseModel):
+    """Create credit package request (admin)."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str
+    credits: int = Field(..., gt=0)
+    price: float = Field(..., gt=0)
+    currency: str = "USD"
+    bonus_credits: int = 0
+    features: list[str] | None = None
+    is_popular: bool = False
+    sort_order: int = 0
+
+
+class CreditPackageUpdate(BaseModel):
+    """Update credit package request (admin)."""
+
+    name: str | None = None
+    description: str | None = None
+    credits: int | None = None
+    price: float | None = None
+    bonus_credits: int | None = None
+    features: list[str] | None = None
+    is_popular: bool | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None
+
+
+class CreditPackageResponse(BaseModel):
+    """Credit package response."""
+
+    id: int
+    name: str
+    description: str
+    credits: int
+    bonus_credits: int
+    total_credits: int
+    price: float
+    currency: str
+    features: str | None  # JSON array
+    is_popular: bool
+
+
+class PackagePurchaseResponse(BaseModel):
+    """Package purchase response."""
+
+    id: int
+    package_name: str
+    credits_purchased: int
+    bonus_credits: int
+    total_credits: int
+    amount_paid: float
+    currency: str
+    payment_method: str
+    payment_id: str | None
+    status: str
+    created_at: datetime
+
+
+class PurchaseStatsResponse(BaseModel):
+    """Purchase statistics response (admin)."""
+
+    total_revenue: float
+    total_purchases: int
+    credits_sold: int
+    bonus_given: int
+    average_order: float
+    popular_packages: list[dict[str, Any]]
+
+
+# ============================================================================
+# Privacy and Retention Schemas (隐私与保留)
+# ============================================================================
+
+
+class RetentionPolicyRequest(BaseModel):
+    """Set retention policy request."""
+
+    search_results_days: int | None = None
+    commenter_data_days: int | None = None
+    lead_data_days: int | None = None
+    analytics_days: int | None = None
+    webhook_logs_days: int | None = None
+    auto_delete_enabled: bool = True
+
+
+class RetentionPolicyResponse(BaseModel):
+    """Retention policy response."""
+
+    id: int
+    search_results_days: int
+    commenter_data_days: int
+    lead_data_days: int
+    analytics_days: int
+    webhook_logs_days: int
+    auto_delete_enabled: bool
+    updated_at: datetime | None
+
+
+class DataStatsResponse(BaseModel):
+    """Data storage statistics response."""
+
+    searches: int
+    leads: int
+    ai_openers: int
+    oldest_search: datetime | None
+    retention_policy: dict[str, Any] | None
+
+
+class DataCleanupResponse(BaseModel):
+    """Data cleanup response."""
+
+    success: bool
+    cleaned_records: dict[str, int]
+
+
+# ============================================================================
+# Network Topology Schemas (网络拓扑)
+# ============================================================================
+
+
+class TopologyNodeResponse(BaseModel):
+    """Topology node response."""
+
+    id: str
+    label: str
+    name: str | None
+    size: float
+    color: str
+    pagerank: float | None = None
+    hidden_score: float | None = None
+    followers_count: int
+    relevance_score: int | None = None
+    is_relevant: bool | None = None
+
+
+class TopologyEdgeResponse(BaseModel):
+    """Topology edge response."""
+
+    source: str
+    target: str
+    type: str
+    weight: float | None = None
+
+
+class TopologyResponse(BaseModel):
+    """Network topology response."""
+
+    search_id: int | None = None
+    keywords: str | None = None
+    nodes: list[TopologyNodeResponse]
+    edges: list[TopologyEdgeResponse]
+    stats: dict[str, Any]

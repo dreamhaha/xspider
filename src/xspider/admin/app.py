@@ -102,6 +102,15 @@ def create_app() -> FastAPI:
     from xspider.admin.routes.twitter_accounts import router as accounts_router
     from xspider.admin.routes.users import router as users_router
 
+    # New feature routers (升级版功能)
+    from xspider.admin.routes.ai_openers import router as openers_router
+    from xspider.admin.routes.analytics import router as analytics_router
+    from xspider.admin.routes.crm import router as crm_router
+    from xspider.admin.routes.packages import router as packages_router
+    from xspider.admin.routes.privacy import router as privacy_router
+    from xspider.admin.routes.topology import router as topology_router
+    from xspider.admin.routes.webhooks import router as webhooks_router
+
     # API routes
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
@@ -111,6 +120,15 @@ def create_app() -> FastAPI:
     app.include_router(credits_router, prefix="/api/credits", tags=["Credits"])
     app.include_router(searches_router, prefix="/api/searches", tags=["Searches"])
     app.include_router(monitors_router, prefix="/api/monitors", tags=["Monitoring"])
+
+    # New feature routes (升级版功能)
+    app.include_router(crm_router, prefix="/api", tags=["CRM"])
+    app.include_router(analytics_router, prefix="/api", tags=["Analytics"])
+    app.include_router(openers_router, prefix="/api", tags=["AI Openers"])
+    app.include_router(webhooks_router, prefix="/api", tags=["Webhooks"])
+    app.include_router(packages_router, prefix="/api", tags=["Packages"])
+    app.include_router(privacy_router, prefix="/api", tags=["Privacy"])
+    app.include_router(topology_router, prefix="/api", tags=["Topology"])
 
     # Page routes (HTML)
     from xspider.admin.routes.pages import router as pages_router

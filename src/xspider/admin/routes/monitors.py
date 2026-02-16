@@ -9,8 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from xspider.admin.auth import get_current_user
-from xspider.admin.database import get_db
+from xspider.admin.auth import get_current_active_user, get_db_session
 from xspider.admin.models import (
     AdminUser,
     AuthenticityLabel,
@@ -53,8 +52,8 @@ router = APIRouter(prefix="/monitors", tags=["Monitoring"])
 @router.post("/influencers", response_model=MonitoredInfluencerResponse)
 async def add_influencer(
     data: MonitoredInfluencerCreate,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> MonitoredInfluencerResponse:
     """Add a new influencer to monitor."""
     from xspider.admin.services.token_pool_integration import create_managed_client
@@ -117,8 +116,8 @@ async def add_influencer(
 
 @router.get("/influencers", response_model=dict)
 async def list_influencers(
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
     status_filter: MonitorStatus | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -146,8 +145,8 @@ async def list_influencers(
 @router.get("/influencers/{influencer_id}", response_model=MonitoredInfluencerResponse)
 async def get_influencer(
     influencer_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> MonitoredInfluencerResponse:
     """Get a monitored influencer by ID."""
     service = InfluencerMonitorService(db)
@@ -166,8 +165,8 @@ async def get_influencer(
 async def update_influencer(
     influencer_id: int,
     data: MonitoredInfluencerUpdate,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> MonitoredInfluencerResponse:
     """Update monitored influencer settings."""
     service = InfluencerMonitorService(db)
@@ -200,8 +199,8 @@ async def update_influencer(
 @router.delete("/influencers/{influencer_id}")
 async def delete_influencer(
     influencer_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Delete a monitored influencer."""
     service = InfluencerMonitorService(db)
@@ -227,8 +226,8 @@ async def delete_influencer(
 @router.get("/influencers/{influencer_id}/tweets", response_model=dict)
 async def list_tweets(
     influencer_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
     since: datetime | None = None,
     until: datetime | None = None,
     page: int = Query(1, ge=1),
@@ -265,8 +264,8 @@ async def list_tweets(
 @router.post("/influencers/{influencer_id}/fetch-tweets", response_model=MonitorTaskResponse)
 async def fetch_influencer_tweets(
     influencer_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
     max_tweets: int = Query(20, ge=1, le=100),
 ) -> MonitorTaskResponse:
     """Fetch latest tweets from an influencer."""
@@ -368,8 +367,8 @@ async def fetch_influencer_tweets(
 @router.post("/tweets/{tweet_id}/scrape-commenters", response_model=MonitorTaskResponse)
 async def scrape_tweet_commenters(
     tweet_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
     max_commenters: int = Query(100, ge=1, le=1000),
 ) -> MonitorTaskResponse:
     """Scrape commenters (replies) for a tweet."""
@@ -403,8 +402,8 @@ async def scrape_tweet_commenters(
 @router.get("/tweets/{tweet_id}/commenters", response_model=dict)
 async def list_commenters(
     tweet_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
     is_real_user: bool | None = None,
     is_bot: bool | None = None,
     can_dm: bool | None = None,
@@ -453,8 +452,8 @@ async def list_commenters(
 @router.post("/tweets/{tweet_id}/analyze-commenters", response_model=MonitorTaskResponse)
 async def analyze_tweet_commenters(
     tweet_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
     force_reanalyze: bool = False,
     use_llm: bool = False,
 ) -> MonitorTaskResponse:
@@ -493,8 +492,8 @@ async def analyze_tweet_commenters(
 @router.get("/tweets/{tweet_id}/analysis-summary", response_model=CommenterAnalysisSummary)
 async def get_analysis_summary(
     tweet_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> CommenterAnalysisSummary:
     """Get analysis summary for a tweet's commenters."""
     # Verify tweet ownership
@@ -523,8 +522,8 @@ async def get_analysis_summary(
 @router.post("/tweets/{tweet_id}/check-dm", response_model=MonitorTaskResponse)
 async def check_dm_status(
     tweet_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
     only_real_users: bool = True,
     force_recheck: bool = False,
 ) -> MonitorTaskResponse:
@@ -563,8 +562,8 @@ async def check_dm_status(
 @router.get("/tweets/{tweet_id}/dm-summary", response_model=dict)
 async def get_dm_summary(
     tweet_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Get DM availability summary for a tweet's commenters."""
     # Verify tweet ownership
@@ -595,8 +594,8 @@ async def get_dm_summary(
 
 @router.get("/stats", response_model=MonitoringStats)
 async def get_monitoring_stats(
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> MonitoringStats:
     """Get monitoring statistics for current user."""
     service = InfluencerMonitorService(db)
@@ -613,8 +612,8 @@ async def get_monitoring_stats(
 @router.post("/export-commenters")
 async def export_commenters(
     request: CommenterExportRequest,
-    current_user: Annotated[AdminUser, Depends(get_current_user)],
-    db: AsyncSession = Depends(get_db),
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """Export commenters data to CSV or JSON."""
     import csv
