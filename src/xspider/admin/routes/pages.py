@@ -2,15 +2,32 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from xspider.admin.auth import decode_token, get_current_active_user
+from xspider.admin.i18n import get_lang, t
+from xspider.admin.i18n.translator import get_all_translations
 from xspider.admin.models import AdminUser, UserRole
 
 router = APIRouter()
+
+
+def get_template_context(request: Request, user: AdminUser | None = None, **kwargs: Any) -> dict[str, Any]:
+    """Build template context with i18n support."""
+    lang = get_lang(request)
+    context = {
+        "request": request,
+        "lang": lang,
+        "_": lambda key, **kw: t(key, lang, **kw),
+        "translations": get_all_translations(lang),
+    }
+    if user:
+        context["user"] = user
+    context.update(kwargs)
+    return context
 
 
 def get_optional_user(request: Request) -> AdminUser | None:
@@ -45,7 +62,7 @@ async def login_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "login.html",
-        {"request": request},
+        get_template_context(request),
     )
 
 
@@ -59,7 +76,7 @@ async def register_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "register.html",
-        {"request": request},
+        get_template_context(request),
     )
 
 
@@ -73,7 +90,7 @@ async def dashboard_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "dashboard.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -89,7 +106,7 @@ async def accounts_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "accounts/list.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -105,7 +122,7 @@ async def proxies_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "proxies/list.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -121,7 +138,7 @@ async def users_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "users/list.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -135,7 +152,7 @@ async def search_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "searches/new.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -149,7 +166,7 @@ async def searches_list_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "searches/list.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -163,7 +180,7 @@ async def search_detail_page(request: Request, search_id: int) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "searches/detail.html",
-        {"request": request, "user": user, "search_id": search_id},
+        get_template_context(request, user, search_id=search_id),
     )
 
 
@@ -177,7 +194,7 @@ async def credits_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "credits.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -191,7 +208,7 @@ async def profile_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "profile.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -205,7 +222,7 @@ async def monitors_page(request: Request) -> HTMLResponse:
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "monitors/list.html",
-        {"request": request, "user": user},
+        get_template_context(request, user),
     )
 
 
@@ -219,5 +236,5 @@ async def monitor_detail_page(request: Request, influencer_id: int) -> HTMLRespo
     templates = request.app.state.templates
     return templates.TemplateResponse(
         "monitors/detail.html",
-        {"request": request, "user": user, "influencer_id": influencer_id},
+        get_template_context(request, user, influencer_id=influencer_id),
     )

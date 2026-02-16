@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ lang|default('en') }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,46 +23,46 @@
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
                         <a class="nav-link" href="/admin/dashboard">
-                            <i class="bi bi-speedometer2"></i> Dashboard
+                            <i class="bi bi-speedometer2"></i> {{ _("nav.dashboard") }}
                         </a>
                     </li>
                     {% if user.role.value == 'admin' %}
                     <li class="nav-item">
                         <a class="nav-link" href="/admin/accounts">
-                            <i class="bi bi-twitter"></i> Accounts
+                            <i class="bi bi-twitter"></i> {{ _("nav.accounts") }}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/admin/proxies">
-                            <i class="bi bi-hdd-network"></i> Proxies
+                            <i class="bi bi-hdd-network"></i> {{ _("nav.proxies") }}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/admin/users">
-                            <i class="bi bi-people"></i> Users
+                            <i class="bi bi-people"></i> {{ _("nav.users") }}
                         </a>
                     </li>
                     {% endif %}
                     <li class="nav-item">
                         <a class="nav-link" href="/search">
-                            <i class="bi bi-search"></i> Search
+                            <i class="bi bi-search"></i> {{ _("nav.search") }}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/searches">
-                            <i class="bi bi-clock-history"></i> History
+                            <i class="bi bi-clock-history"></i> {{ _("nav.history") }}
                         </a>
                     </li>
                     <li class="nav-item">
                         <a class="nav-link" href="/admin/monitors">
-                            <i class="bi bi-broadcast"></i> Monitors
+                            <i class="bi bi-broadcast"></i> {{ _("nav.monitors") }}
                         </a>
                     </li>
                 </ul>
                 <ul class="navbar-nav">
                     <li class="nav-item">
                         <a class="nav-link" href="/credits">
-                            <i class="bi bi-coin"></i> Credits: <span id="credit-balance">{{ user.credits }}</span>
+                            <i class="bi bi-coin"></i> {{ _("nav.credits") }}: <span id="credit-balance">{{ user.credits }}</span>
                         </a>
                     </li>
                     <li class="nav-item dropdown">
@@ -73,9 +73,9 @@
                             {% endif %}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
-                            <li><a class="dropdown-item" href="/profile"><i class="bi bi-person"></i> Profile</a></li>
+                            <li><a class="dropdown-item" href="/profile"><i class="bi bi-person"></i> {{ _("nav.profile") }}</a></li>
                             <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="#" onclick="logout()"><i class="bi bi-box-arrow-right"></i> Logout</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="logout()"><i class="bi bi-box-arrow-right"></i> {{ _("nav.logout") }}</a></li>
                         </ul>
                     </li>
                 </ul>
@@ -96,6 +96,23 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script>
+        // i18n translations for JavaScript
+        window.TRANSLATIONS = {{ translations|tojson|safe }};
+        window.LANG = "{{ lang|default('en') }}";
+        window.t = function(key) {
+            var parts = key.split('.');
+            var value = window.TRANSLATIONS;
+            for (var i = 0; i < parts.length; i++) {
+                if (value && typeof value === 'object' && parts[i] in value) {
+                    value = value[parts[i]];
+                } else {
+                    return key;
+                }
+            }
+            return typeof value === 'string' ? value : key;
+        };
+    </script>
     <script src="/static/js/app.js"></script>
     {% block extra_js %}{% endblock %}
 </body>

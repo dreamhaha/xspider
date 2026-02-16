@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from xspider.admin.auth import create_default_admin
+from xspider.admin.i18n import I18nMiddleware, get_all_translations, t
 from xspider.admin.models import (
     AdminUser,
     CreditTransaction,
@@ -82,12 +83,21 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # i18n middleware (must be after CORS)
+    app.add_middleware(I18nMiddleware)
+
     # Mount static files
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
     # Setup Jinja2 templates
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+    # Add i18n translation functions to Jinja2 globals
+    # Note: get_template_context() in pages.py provides a language-aware _() function
+    # These globals serve as fallbacks for templates without proper context
+    templates.env.globals["t"] = t  # Explicit t(key, lang) for when language is known
+    templates.env.globals["get_translations"] = get_all_translations
 
     # Store templates in app state for use in routes
     app.state.templates = templates
@@ -111,6 +121,12 @@ def create_app() -> FastAPI:
     from xspider.admin.routes.topology import router as topology_router
     from xspider.admin.routes.webhooks import router as webhooks_router
 
+    # Growth & Engagement routers (运营增长系统)
+    from xspider.admin.routes.content_rewrite import router as content_rewrite_router
+    from xspider.admin.routes.operating_accounts import router as operating_accounts_router
+    from xspider.admin.routes.smart_interaction import router as smart_interaction_router
+    from xspider.admin.routes.targeted_comment import router as targeted_comment_router
+
     # API routes
     app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
@@ -129,6 +145,12 @@ def create_app() -> FastAPI:
     app.include_router(packages_router, prefix="/api", tags=["Packages"])
     app.include_router(privacy_router, prefix="/api", tags=["Privacy"])
     app.include_router(topology_router, prefix="/api", tags=["Topology"])
+
+    # Growth & Engagement routes (运营增长系统)
+    app.include_router(operating_accounts_router, prefix="/api")
+    app.include_router(content_rewrite_router, prefix="/api")
+    app.include_router(smart_interaction_router, prefix="/api")
+    app.include_router(targeted_comment_router, prefix="/api")
 
     # Page routes (HTML)
     from xspider.admin.routes.pages import router as pages_router

@@ -1,0 +1,86 @@
+{
+  "auth": {
+    "invalid_credentials": "Invalid username or password",
+    "account_disabled": "User account is disabled",
+    "username_exists": "Username already registered",
+    "email_exists": "Email already registered",
+    "current_password_incorrect": "Current password is incorrect",
+    "password_too_short": "New password must be at least 6 characters",
+    "password_changed": "Password changed successfully",
+    "logged_out": "Successfully logged out"
+  },
+  "common": {
+    "not_found": "Not found",
+    "user_not_found": "User not found",
+    "error": "Error",
+    "success": "Success",
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "confirm": "Confirm",
+    "back": "Back",
+    "actions": "Actions"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "accounts": "Accounts",
+    "proxies": "Proxies",
+    "users": "Users",
+    "search": "Search",
+    "history": "History",
+    "monitors": "Monitors",
+    "credits": "Credits",
+    "profile": "Profile",
+    "logout": "Logout"
+  },
+  "ui": {
+    "login": "Login",
+    "register": "Register",
+    "username": "Username",
+    "password": "Password",
+    "email": "Email",
+    "submit": "Submit",
+    "logging_in": "Logging in...",
+    "connection_error": "Connection error. Please try again.",
+    "login_failed": "Login failed",
+    "dont_have_account": "Don't have an account?",
+    "admin_panel": "Admin Panel",
+    "system_description": "Twitter Influencer Discovery System",
+    "default_credentials": "Default admin: admin / admin123"
+  },
+  "users": {
+    "username_exists": "Username already exists",
+    "email_exists": "Email already exists",
+    "cannot_demote_self": "Cannot demote yourself",
+    "cannot_delete_self": "Cannot delete yourself",
+    "cannot_deactivate_self": "Cannot deactivate yourself",
+    "password_reset": "Password reset for user {username}"
+  },
+  "credits": {
+    "balance": "Balance",
+    "recharge": "Recharge",
+    "transaction_history": "Transaction History"
+  },
+  "accounts": {
+    "title": "Twitter Accounts",
+    "add_account": "Add Account",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive",
+    "suspended": "Suspended"
+  },
+  "searches": {
+    "title": "Searches",
+    "new_search": "New Search",
+    "search_history": "Search History",
+    "results": "Results",
+    "status": "Status",
+    "pending": "Pending",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed"
+  }
+}

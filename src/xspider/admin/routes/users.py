@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from xspider.admin.auth import get_current_admin, get_db_session, hash_password
+from xspider.admin.i18n import get_lang, t
 from xspider.admin.models import AdminUser, CreditTransaction, TransactionType, UserRole
 from xspider.admin.schemas import (
     CreditRechargeRequest,
@@ -61,17 +62,19 @@ async def list_users(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     db: AsyncSession = Depends(get_db_session),
 ) -> AdminUser:
     """Get user details."""
+    lang = get_lang(request)
     result = await db.execute(select(AdminUser).where(AdminUser.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=t("common.user_not_found", lang),
         )
 
     return user
@@ -79,37 +82,40 @@ async def get_user(
 
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def create_user(
-    request: UserCreateRequest,
+    create_request: UserCreateRequest,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     db: AsyncSession = Depends(get_db_session),
 ) -> AdminUser:
     """Create a new user."""
+    lang = get_lang(request)
+
     # Check if username exists
     result = await db.execute(
-        select(AdminUser).where(AdminUser.username == request.username)
+        select(AdminUser).where(AdminUser.username == create_request.username)
     )
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Username already exists",
+            detail=t("users.username_exists", lang),
         )
 
     # Check if email exists
     result = await db.execute(
-        select(AdminUser).where(AdminUser.email == request.email)
+        select(AdminUser).where(AdminUser.email == create_request.email)
     )
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email already exists",
+            detail=t("users.email_exists", lang),
         )
 
     user = AdminUser(
-        username=request.username,
-        email=request.email,
-        password_hash=hash_password(request.password),
-        role=request.role,
-        credits=request.credits,
+        username=create_request.username,
+        email=create_request.email,
+        password_hash=hash_password(create_request.password),
+        role=create_request.role,
+        credits=create_request.credits,
         is_active=True,
     )
     db.add(user)
@@ -122,43 +128,45 @@ async def create_user(
 @router.put("/{user_id}", response_model=UserResponse)
 async def update_user(
     user_id: int,
-    request: UserUpdateRequest,
+    update_request: UserUpdateRequest,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     db: AsyncSession = Depends(get_db_session),
 ) -> AdminUser:
     """Update a user."""
+    lang = get_lang(request)
     result = await db.execute(select(AdminUser).where(AdminUser.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=t("common.user_not_found", lang),
         )
 
     # Prevent demoting self
-    if user.id == current_user.id and request.role and request.role != UserRole.ADMIN:
+    if user.id == current_user.id and update_request.role and update_request.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot demote yourself",
+            detail=t("users.cannot_demote_self", lang),
         )
 
     # Check email uniqueness if updating
-    if request.email and request.email != user.email:
+    if update_request.email and update_request.email != user.email:
         email_result = await db.execute(
-            select(AdminUser).where(AdminUser.email == request.email)
+            select(AdminUser).where(AdminUser.email == update_request.email)
         )
         if email_result.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already exists",
+                detail=t("users.email_exists", lang),
             )
-        user.email = request.email
+        user.email = update_request.email
 
-    if request.role is not None:
-        user.role = request.role
-    if request.is_active is not None:
-        user.is_active = request.is_active
+    if update_request.role is not None:
+        user.role = update_request.role
+    if update_request.is_active is not None:
+        user.is_active = update_request.is_active
 
     await db.commit()
     await db.refresh(user)
@@ -169,14 +177,17 @@ async def update_user(
 @router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(
     user_id: int,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     db: AsyncSession = Depends(get_db_session),
 ) -> None:
     """Delete a user."""
+    lang = get_lang(request)
+
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete yourself",
+            detail=t("users.cannot_delete_self", lang),
         )
 
     result = await db.execute(select(AdminUser).where(AdminUser.id == user_id))
@@ -185,7 +196,7 @@ async def delete_user(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=t("common.user_not_found", lang),
         )
 
     await db.delete(user)
@@ -195,31 +206,33 @@ async def delete_user(
 @router.post("/{user_id}/recharge", response_model=CreditTransactionResponse)
 async def recharge_credits(
     user_id: int,
-    request: CreditRechargeRequest,
+    recharge_request: CreditRechargeRequest,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     db: AsyncSession = Depends(get_db_session),
 ) -> CreditTransaction:
     """Recharge user credits."""
+    lang = get_lang(request)
     result = await db.execute(select(AdminUser).where(AdminUser.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=t("common.user_not_found", lang),
         )
 
     # Update user credits
-    user.credits += request.amount
+    user.credits += recharge_request.amount
     new_balance = user.credits
 
     # Create transaction record
     transaction = CreditTransaction(
         user_id=user_id,
-        amount=request.amount,
+        amount=recharge_request.amount,
         balance_after=new_balance,
         type=TransactionType.RECHARGE,
-        description=request.description or f"Admin recharge by {current_user.username}",
+        description=recharge_request.description or f"Admin recharge by {current_user.username}",
         created_by=current_user.id,
     )
     db.add(transaction)
@@ -234,46 +247,50 @@ async def recharge_credits(
 async def reset_user_password(
     user_id: int,
     new_password: str,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     db: AsyncSession = Depends(get_db_session),
 ) -> dict[str, str]:
     """Reset user password (admin only)."""
+    lang = get_lang(request)
     result = await db.execute(select(AdminUser).where(AdminUser.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=t("common.user_not_found", lang),
         )
 
     if len(new_password) < 6:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Password must be at least 6 characters",
+            detail=t("auth.password_too_short", lang),
         )
 
     user.password_hash = hash_password(new_password)
     await db.commit()
 
-    return {"message": f"Password reset for user {user.username}"}
+    return {"message": t("users.password_reset", lang, username=user.username)}
 
 
 @router.get("/{user_id}/transactions", response_model=list[CreditTransactionResponse])
 async def get_user_transactions(
     user_id: int,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db_session),
 ) -> list[CreditTransaction]:
     """Get user's credit transaction history."""
+    lang = get_lang(request)
     result = await db.execute(select(AdminUser).where(AdminUser.id == user_id))
     user = result.scalar_one_or_none()
 
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=t("common.user_not_found", lang),
         )
 
     tx_result = await db.execute(
@@ -289,14 +306,17 @@ async def get_user_transactions(
 @router.post("/{user_id}/toggle-active", response_model=UserResponse)
 async def toggle_user_active(
     user_id: int,
+    request: Request,
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
     db: AsyncSession = Depends(get_db_session),
 ) -> AdminUser:
     """Toggle user active status."""
+    lang = get_lang(request)
+
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot deactivate yourself",
+            detail=t("users.cannot_deactivate_self", lang),
         )
 
     result = await db.execute(select(AdminUser).where(AdminUser.id == user_id))
@@ -305,7 +325,7 @@ async def toggle_user_active(
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
+            detail=t("common.user_not_found", lang),
         )
 
     user.is_active = not user.is_active

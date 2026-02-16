@@ -1,0 +1,86 @@
+{
+  "auth": {
+    "invalid_credentials": "ユーザー名またはパスワードが正しくありません",
+    "account_disabled": "アカウントが無効です",
+    "username_exists": "ユーザー名は既に登録されています",
+    "email_exists": "メールアドレスは既に登録されています",
+    "current_password_incorrect": "現在のパスワードが正しくありません",
+    "password_too_short": "新しいパスワードは6文字以上必要です",
+    "password_changed": "パスワードを変更しました",
+    "logged_out": "ログアウトしました"
+  },
+  "common": {
+    "not_found": "見つかりません",
+    "user_not_found": "ユーザーが見つかりません",
+    "error": "エラー",
+    "success": "成功",
+    "loading": "読み込み中...",
+    "save": "保存",
+    "cancel": "キャンセル",
+    "delete": "削除",
+    "edit": "編集",
+    "create": "作成",
+    "confirm": "確認",
+    "back": "戻る",
+    "actions": "操作"
+  },
+  "nav": {
+    "dashboard": "ダッシュボード",
+    "accounts": "アカウント",
+    "proxies": "プロキシ",
+    "users": "ユーザー",
+    "search": "検索",
+    "history": "履歴",
+    "monitors": "モニター",
+    "credits": "クレジット",
+    "profile": "プロフィール",
+    "logout": "ログアウト"
+  },
+  "ui": {
+    "login": "ログイン",
+    "register": "登録",
+    "username": "ユーザー名",
+    "password": "パスワード",
+    "email": "メールアドレス",
+    "submit": "送信",
+    "logging_in": "ログイン中...",
+    "connection_error": "接続エラー。もう一度お試しください。",
+    "login_failed": "ログインに失敗しました",
+    "dont_have_account": "アカウントをお持ちでないですか？",
+    "admin_panel": "管理パネル",
+    "system_description": "Twitterインフルエンサー発見システム",
+    "default_credentials": "デフォルト管理者: admin / admin123"
+  },
+  "users": {
+    "username_exists": "ユーザー名は既に存在します",
+    "email_exists": "メールアドレスは既に存在します",
+    "cannot_demote_self": "自分を降格できません",
+    "cannot_delete_self": "自分を削除できません",
+    "cannot_deactivate_self": "自分を無効化できません",
+    "password_reset": "ユーザー {username} のパスワードをリセットしました"
+  },
+  "credits": {
+    "balance": "残高",
+    "recharge": "チャージ",
+    "transaction_history": "取引履歴"
+  },
+  "accounts": {
+    "title": "Twitterアカウント",
+    "add_account": "アカウント追加",
+    "status": "ステータス",
+    "active": "有効",
+    "inactive": "無効",
+    "suspended": "停止中"
+  },
+  "searches": {
+    "title": "検索",
+    "new_search": "新規検索",
+    "search_history": "検索履歴",
+    "results": "結果",
+    "status": "ステータス",
+    "pending": "保留中",
+    "running": "実行中",
+    "completed": "完了",
+    "failed": "失敗"
+  }
+}
