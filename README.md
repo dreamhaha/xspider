@@ -16,6 +16,7 @@ Twitter/X KOL Discovery & Sales Conversion Platform based on Social Network Anal
 - **Proxy IP Pool**: Manage proxies with health checking
 - **User Management**: Role-based access (admin/user) with credit system
 - **Search Tasks**: Track and manage discovery tasks
+- **Multi-Language Support (i18n)**: Chinese, English, Japanese with auto-detection
 
 ### Influencer Monitoring
 - **Tweet Monitoring**: Track specific influencer tweets within time ranges
@@ -100,6 +101,35 @@ Access the admin panel at `http://localhost:8000/admin/dashboard`
 Default credentials (first run):
 - Username: `admin`
 - Password: `admin123`
+
+## Multi-Language Support (i18n)
+
+The admin interface supports automatic language detection based on browser settings:
+
+| Language | Code | Status |
+|----------|------|--------|
+| English | `en` | Default |
+| Chinese (Simplified) | `zh` | Supported |
+| Japanese | `ja` | Supported |
+
+**How it works:**
+1. Browser sends `Accept-Language` header (e.g., `zh-CN,zh;q=0.9,en;q=0.8`)
+2. i18n middleware extracts primary language
+3. All API responses and UI elements display in detected language
+4. Falls back to English if language not supported
+
+**Testing language detection:**
+```bash
+# Test Chinese
+curl -H "Accept-Language: zh-CN" http://localhost:8000/api/auth/login \
+  -d '{"username":"x","password":"x"}' -H "Content-Type: application/json"
+# Returns: {"detail": "用户名或密码错误"}
+
+# Test Japanese
+curl -H "Accept-Language: ja" http://localhost:8000/api/auth/login \
+  -d '{"username":"x","password":"x"}' -H "Content-Type: application/json"
+# Returns: {"detail": "ユーザー名またはパスワードが正しくありません"}
+```
 
 ## Architecture
 
@@ -327,6 +357,10 @@ src/xspider/
 │   ├── auth.py            # JWT authentication
 │   ├── models.py          # Database models (50+ tables)
 │   ├── schemas.py         # Pydantic schemas (100+ schemas)
+│   ├── i18n/              # Internationalization
+│   │   ├── middleware.py  # Accept-Language parsing
+│   │   ├── translator.py  # Translation lookup
+│   │   └── locales/       # Translation files (en, zh, ja)
 │   ├── routes/            # API endpoints
 │   │   ├── auth.py        # Authentication
 │   │   ├── dashboard.py   # Dashboard stats

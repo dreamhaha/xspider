@@ -6,12 +6,13 @@
 2. [架构设计](#2-架构设计)
 3. [模块详解](#3-模块详解)
 4. [销售转化模块](#4-销售转化模块) *(NEW)*
-5. [数据模型](#5-数据模型)
-6. [核心算法](#6-核心算法)
-7. [API 接口](#7-api-接口)
-8. [配置指南](#8-配置指南)
-9. [开发指南](#9-开发指南)
-10. [部署运维](#10-部署运维)
+5. [国际化模块 (i18n)](#5-国际化模块-i18n) *(NEW)*
+6. [数据模型](#6-数据模型)
+7. [核心算法](#7-核心算法)
+8. [API 接口](#8-api-接口)
+9. [配置指南](#9-配置指南)
+10. [开发指南](#10-开发指南)
+11. [部署运维](#11-部署运维)
 
 ---
 
@@ -1355,9 +1356,176 @@ class TopologyService:
 
 ---
 
-## 5. 数据模型
+## 5. 国际化模块 (i18n)
 
-### 5.1 数据库 Schema
+### 5.1 概述
+
+xspider 支持多语言界面，通过 Accept-Language HTTP 头自动检测用户语言偏好。
+
+| 语言 | 代码 | 状态 |
+|------|------|------|
+| English | `en` | 默认语言 |
+| 简体中文 | `zh` | 支持 |
+| 日本語 | `ja` | 支持 |
+
+### 5.2 架构设计
+
+```
+浏览器请求
+    ↓
+Accept-Language: zh-CN,zh;q=0.9,en;q=0.8
+    ↓
+I18nMiddleware (解析语言)
+    ↓
+Request.state.lang = "zh"
+    ↓
+Routes 使用 t("key", lang) 翻译
+    ↓
+返回本地化响应
+```
+
+### 5.3 文件结构
+
+```
+src/xspider/admin/i18n/
+├── __init__.py           # 模块导出
+├── middleware.py         # Accept-Language 中间件
+├── translator.py         # 翻译查找逻辑
+└── locales/
+    ├── en.json           # 英文翻译
+    ├── zh.json           # 中文翻译
+    └── ja.json           # 日文翻译
+```
+
+### 5.4 翻译器 (`translator.py`)
+
+```python
+from xspider.admin.i18n import t
+
+# 基础用法
+t("auth.invalid_credentials", "zh")
+# 输出: "用户名或密码错误"
+
+# 带占位符
+t("users.password_reset", "en", username="admin")
+# 输出: "Password reset for user admin"
+
+# 嵌套键查找
+t("nav.dashboard", "ja")
+# 输出: "ダッシュボード"
+```
+
+**特性:**
+- 线程安全的单例模式
+- 支持嵌套键 (如 `auth.invalid_credentials`)
+- 占位符替换 (如 `{username}`)
+- 占位符注入防护
+- 自动回退到英文
+
+### 5.5 中间件 (`middleware.py`)
+
+```python
+class I18nMiddleware(BaseHTTPMiddleware):
+    """从 Accept-Language 头解析语言"""
+
+    async def dispatch(self, request, call_next):
+        accept_language = request.headers.get("Accept-Language", "")
+        lang = self._parse_accept_language(accept_language)
+        request.state.lang = lang
+        return await call_next(request)
+```
+
+**Accept-Language 解析示例:**
+
+| 请求头 | 解析结果 |
+|--------|----------|
+| `zh-CN,zh;q=0.9,en;q=0.8` | `zh` |
+| `ja,en;q=0.8` | `ja` |
+| `de,fr;q=0.9,en;q=0.8` | `en` (不支持德语，回退英文) |
+
+### 5.6 在路由中使用
+
+```python
+from xspider.admin.i18n import get_lang, t
+
+@router.post("/login")
+async def login(request: Request, ...):
+    lang = get_lang(request)
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail=t("auth.invalid_credentials", lang),
+        )
+```
+
+### 5.7 在模板中使用
+
+```html
+<!-- 动态设置语言属性 -->
+<html lang="{{ lang }}">
+
+<!-- 使用翻译函数 -->
+<a href="/admin/dashboard">{{ _("nav.dashboard") }}</a>
+
+<!-- JavaScript 中使用 -->
+<script>
+    var message = t("ui.loading");
+</script>
+```
+
+### 5.8 翻译文件格式
+
+```json
+{
+  "auth": {
+    "invalid_credentials": "用户名或密码错误",
+    "account_disabled": "用户账号已被禁用"
+  },
+  "nav": {
+    "dashboard": "仪表盘",
+    "accounts": "账号管理"
+  },
+  "ui": {
+    "login": "登录",
+    "password": "密码"
+  }
+}
+```
+
+### 5.9 添加新语言
+
+1. 创建 `src/xspider/admin/i18n/locales/xx.json`
+2. 在 `translator.py` 中添加语言代码:
+
+```python
+SUPPORTED_LANGUAGES = ("en", "zh", "ja", "xx")  # 添加新语言
+```
+
+### 5.10 测试
+
+```bash
+# 测试中文
+curl -H "Accept-Language: zh-CN" http://localhost:8000/api/auth/login \
+  -d '{"username":"x","password":"x"}' -H "Content-Type: application/json"
+# 返回: {"detail": "用户名或密码错误"}
+
+# 测试日文
+curl -H "Accept-Language: ja" http://localhost:8000/api/auth/login \
+  -d '{"username":"x","password":"x"}' -H "Content-Type: application/json"
+# 返回: {"detail": "ユーザー名またはパスワードが正しくありません"}
+
+# 测试回退 (不支持的语言)
+curl -H "Accept-Language: de" http://localhost:8000/api/auth/login \
+  -d '{"username":"x","password":"x"}' -H "Content-Type: application/json"
+# 返回: {"detail": "Invalid username or password"}
+```
+
+---
+
+## 6. 数据模型
+
+### 6.1 数据库 Schema
 
 ```sql
 -- 用户表
@@ -1427,7 +1595,7 @@ CREATE INDEX idx_rankings_hidden ON rankings(hidden_score DESC);
 CREATE INDEX idx_audits_relevance ON audits(relevance_score DESC);
 ```
 
-### 5.2 关系图
+### 6.2 关系图
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1447,9 +1615,9 @@ CREATE INDEX idx_audits_relevance ON audits(relevance_score DESC);
 
 ---
 
-## 6. 核心算法
+## 7. 核心算法
 
-### 6.1 PageRank 算法
+### 7.1 PageRank 算法
 
 PageRank 通过链接结构计算节点重要性。在 KOL 发现场景中，被更多有影响力的用户关注的人，其权重更高。
 
@@ -1490,7 +1658,7 @@ def compute_pagerank(graph: nx.DiGraph) -> dict[str, float]:
     )
 ```
 
-### 6.2 隐形大佬算法
+### 7.2 隐形大佬算法
 
 #### 核心思想
 
@@ -1522,7 +1690,7 @@ Hidden Score = PageRank Score / log(Followers Count + 2)
 | Established | followers >= 50K | 已确立的大 V |
 | Potential | 其他 | 潜力股，待观察 |
 
-### 6.3 BFS 网络遍历
+### 7.3 BFS 网络遍历
 
 ```python
 算法: BFS_CRAWL(seeds, max_depth)
@@ -1565,9 +1733,9 @@ Hidden Score = PageRank Score / log(Followers Count + 2)
 
 ---
 
-## 7. API 接口
+## 8. API 接口
 
-### 7.1 内部 API
+### 8.1 内部 API
 
 #### TwitterGraphQLClient
 
@@ -1630,7 +1798,7 @@ class ContentAuditor:
     async def audit_and_save(user_id: str, industry: str) -> AuditResult
 ```
 
-### 7.2 CLI 命令
+### 8.2 CLI 命令
 
 ```bash
 # 种子采集
@@ -1663,9 +1831,9 @@ xspider export all --output-dir exports/
 
 ---
 
-## 8. 配置指南
+## 9. 配置指南
 
-### 8.1 环境变量
+### 9.1 环境变量
 
 创建 `.env` 文件:
 
@@ -1711,7 +1879,7 @@ LOG_LEVEL=INFO                 # DEBUG, INFO, WARNING, ERROR
 LOG_FORMAT=json                # json 或 console
 ```
 
-### 8.2 获取 Twitter Token
+### 9.2 获取 Twitter Token
 
 1. **浏览器登录 Twitter**
 2. **打开开发者工具 (F12)**
@@ -1725,7 +1893,7 @@ x-csrf-token: abc123...                                 -> ct0
 cookie: auth_token=xyz789...                           -> auth_token
 ```
 
-### 8.3 代理配置建议
+### 9.3 代理配置建议
 
 | 爬取规模 | 推荐代理类型 | 预估成本 |
 |---------|-------------|---------|
@@ -1740,9 +1908,9 @@ cookie: auth_token=xyz789...                           -> auth_token
 
 ---
 
-## 9. 开发指南
+## 10. 开发指南
 
-### 9.1 项目设置
+### 10.1 项目设置
 
 ```bash
 # 克隆项目
@@ -1763,7 +1931,7 @@ python -c "import asyncio; from xspider.storage import init_database; asyncio.ru
 pytest tests/ -v --cov=xspider
 ```
 
-### 9.2 代码规范
+### 10.2 代码规范
 
 ```bash
 # 格式化
@@ -1776,7 +1944,7 @@ ruff check src/ tests/
 mypy src/
 ```
 
-### 9.3 添加新的 GraphQL 端点
+### 10.3 添加新的 GraphQL 端点
 
 ```python
 # 1. 在 endpoints.py 中添加端点类型
@@ -1800,7 +1968,7 @@ async def new_endpoint_method(self, param: str) -> Result:
     return self._parse_response(response)
 ```
 
-### 9.4 添加新的 CLI 命令
+### 10.4 添加新的 CLI 命令
 
 ```python
 # 1. 创建命令文件 src/xspider/cli/commands/newcmd.py
@@ -1822,7 +1990,7 @@ from xspider.cli.commands import newcmd
 app.add_typer(newcmd.app, name="newcmd")
 ```
 
-### 9.5 测试
+### 10.5 测试
 
 ```python
 # tests/unit/test_pagerank.py
@@ -1858,9 +2026,9 @@ async def test_graph_builder_from_database(mock_database):
 
 ---
 
-## 10. 部署运维
+## 11. 部署运维
 
-### 10.1 性能优化
+### 11.1 性能优化
 
 #### Token 池大小
 
@@ -1890,7 +2058,7 @@ async def process_in_batches(user_ids: list[str], batch_size: int = 1000):
         gc.collect()  # 主动回收内存
 ```
 
-### 10.2 监控指标
+### 11.2 监控指标
 
 ```python
 # 关键指标
@@ -1920,7 +2088,7 @@ metrics = {
 }
 ```
 
-### 10.3 故障处理
+### 11.3 故障处理
 
 | 故障类型 | 检测方式 | 自动恢复 |
 |---------|---------|---------|
@@ -1929,7 +2097,7 @@ metrics = {
 | 代理封禁 | 连接超时 | 切换代理，冷却 30 分钟 |
 | 数据库锁 | SQLITE_BUSY | 指数退避重试 |
 
-### 10.4 数据备份
+### 11.4 数据备份
 
 ```bash
 # 定期备份 SQLite 数据库
@@ -2060,3 +2228,4 @@ python-dotenv = ">=1.0.0"
 |-----|------|---------|
 | 1.0.0 | 2024-01 | 初始版本 |
 | 2.0.0 | 2024-02 | 新增销售转化模块：CRM、AI破冰、意图分析、增长监测、受众重合、Webhook、拓扑可视化 |
+| 2.1.0 | 2025-02 | 新增国际化(i18n)支持：中文、英文、日文，自动语言检测 |
