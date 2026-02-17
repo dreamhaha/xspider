@@ -12,6 +12,7 @@ from urllib.parse import quote
 class EndpointType(str, Enum):
     """GraphQL endpoint types."""
 
+    # Query endpoints (GET)
     USER_BY_SCREEN_NAME = "UserByScreenName"
     USER_BY_REST_ID = "UserByRestId"
     FOLLOWING = "Following"
@@ -22,6 +23,16 @@ class EndpointType(str, Enum):
     SEARCH_TIMELINE = "SearchTimeline"
     HOME_TIMELINE = "HomeTimeline"
     LIKES = "Likes"
+
+    # Mutation endpoints (POST) - for Growth & Engagement System
+    CREATE_TWEET = "CreateTweet"
+    CREATE_REPLY = "CreateReply"  # Actually uses CreateTweet with reply params
+    DELETE_TWEET = "DeleteTweet"
+    FAVORITE_TWEET = "FavoriteTweet"
+    UNFAVORITE_TWEET = "UnfavoriteTweet"
+    CREATE_RETWEET = "CreateRetweet"
+    DELETE_RETWEET = "DeleteRetweet"
+    SEND_DM = "SendDM"  # Direct Message
 
 
 @dataclass(frozen=True)
@@ -86,6 +97,43 @@ GRAPHQL_ENDPOINTS: dict[EndpointType, GraphQLEndpoint] = {
         endpoint_type=EndpointType.LIKES,
         query_id="eSSNbhECHHWWALkkQq-YTA",
         operation_name="Likes",
+    ),
+    # Mutation endpoints (POST)
+    EndpointType.CREATE_TWEET: GraphQLEndpoint(
+        endpoint_type=EndpointType.CREATE_TWEET,
+        query_id="a1p9RWpkYKBjWvUR01Y6Cw",
+        operation_name="CreateTweet",
+        method="POST",
+    ),
+    EndpointType.DELETE_TWEET: GraphQLEndpoint(
+        endpoint_type=EndpointType.DELETE_TWEET,
+        query_id="VaenaVgh5q5ih7kvyVjgtg",
+        operation_name="DeleteTweet",
+        method="POST",
+    ),
+    EndpointType.FAVORITE_TWEET: GraphQLEndpoint(
+        endpoint_type=EndpointType.FAVORITE_TWEET,
+        query_id="lI07N6Otwv1PhnEgXILM7A",
+        operation_name="FavoriteTweet",
+        method="POST",
+    ),
+    EndpointType.UNFAVORITE_TWEET: GraphQLEndpoint(
+        endpoint_type=EndpointType.UNFAVORITE_TWEET,
+        query_id="ZYKSe-w7KEslx3JhSIk5LA",
+        operation_name="UnfavoriteTweet",
+        method="POST",
+    ),
+    EndpointType.CREATE_RETWEET: GraphQLEndpoint(
+        endpoint_type=EndpointType.CREATE_RETWEET,
+        query_id="ojPdsZsimiJrUGLR1sjUtA",
+        operation_name="CreateRetweet",
+        method="POST",
+    ),
+    EndpointType.DELETE_RETWEET: GraphQLEndpoint(
+        endpoint_type=EndpointType.DELETE_RETWEET,
+        query_id="iQtK4dl5hBmXewYZuEOKVw",
+        operation_name="DeleteRetweet",
+        method="POST",
     ),
 }
 
@@ -323,3 +371,151 @@ def build_graphql_url(endpoint_type: EndpointType) -> str:
     """Build full GraphQL URL for an endpoint type."""
     endpoint = get_endpoint(endpoint_type)
     return RequestBuilder.build_url(endpoint)
+
+
+# ============================================================================
+# Mutation Endpoints (POST) - for Growth & Engagement System
+# ============================================================================
+
+
+MUTATION_FEATURES: dict[str, bool] = {
+    "communities_web_enable_tweet_community_results_fetch": True,
+    "c9s_tweet_anatomy_moderator_badge_enabled": True,
+    "tweetypie_unmention_optimization_enabled": True,
+    "responsive_web_edit_tweet_api_enabled": True,
+    "graphql_is_translatable_rweb_tweet_is_translatable_enabled": True,
+    "view_counts_everywhere_api_enabled": True,
+    "longform_notetweets_consumption_enabled": True,
+    "responsive_web_twitter_article_tweet_consumption_enabled": True,
+    "tweet_awards_web_tipping_enabled": False,
+    "creator_subscriptions_quote_tweet_preview_enabled": False,
+    "longform_notetweets_rich_text_read_enabled": True,
+    "longform_notetweets_inline_media_enabled": True,
+    "articles_preview_enabled": True,
+    "rweb_video_timestamps_enabled": True,
+    "rweb_tipjar_consumption_enabled": True,
+    "responsive_web_graphql_exclude_directive_enabled": True,
+    "verified_phone_label_enabled": False,
+    "freedom_of_speech_not_reach_fetch_enabled": True,
+    "standardized_nudges_misinfo": True,
+    "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True,
+    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+    "responsive_web_graphql_timeline_navigation_enabled": True,
+    "responsive_web_enhance_cards_enabled": False,
+    "responsive_web_media_download_video_enabled": True,
+}
+
+
+class MutationRequestBuilder:
+    """Builds mutation request payloads for POST endpoints."""
+
+    @classmethod
+    def build_create_tweet_payload(
+        cls,
+        text: str,
+        reply_to_tweet_id: str | None = None,
+        quote_tweet_id: str | None = None,
+        media_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Build payload for CreateTweet mutation.
+
+        Args:
+            text: Tweet text content
+            reply_to_tweet_id: Tweet ID to reply to (optional)
+            quote_tweet_id: Tweet ID to quote (optional)
+            media_ids: List of media IDs to attach (optional)
+
+        Returns:
+            Dict payload for POST request body
+        """
+        variables: dict[str, Any] = {
+            "tweet_text": text,
+            "dark_request": False,
+            "media": {
+                "media_entities": [],
+                "possibly_sensitive": False,
+            },
+            "semantic_annotation_ids": [],
+        }
+
+        # Add reply context if replying to a tweet
+        if reply_to_tweet_id:
+            variables["reply"] = {
+                "in_reply_to_tweet_id": reply_to_tweet_id,
+                "exclude_reply_user_ids": [],
+            }
+
+        # Add quote tweet context
+        if quote_tweet_id:
+            variables["attachment_url"] = f"https://twitter.com/i/web/status/{quote_tweet_id}"
+
+        # Add media if provided
+        if media_ids:
+            variables["media"]["media_entities"] = [
+                {"media_id": mid, "tagged_users": []} for mid in media_ids
+            ]
+
+        return {
+            "variables": variables,
+            "features": MUTATION_FEATURES,
+            "queryId": GRAPHQL_ENDPOINTS[EndpointType.CREATE_TWEET].query_id,
+        }
+
+    @classmethod
+    def build_delete_tweet_payload(cls, tweet_id: str) -> dict[str, Any]:
+        """Build payload for DeleteTweet mutation."""
+        return {
+            "variables": {
+                "tweet_id": tweet_id,
+                "dark_request": False,
+            },
+            "queryId": GRAPHQL_ENDPOINTS[EndpointType.DELETE_TWEET].query_id,
+        }
+
+    @classmethod
+    def build_favorite_tweet_payload(cls, tweet_id: str) -> dict[str, Any]:
+        """Build payload for FavoriteTweet mutation."""
+        return {
+            "variables": {
+                "tweet_id": tweet_id,
+            },
+            "queryId": GRAPHQL_ENDPOINTS[EndpointType.FAVORITE_TWEET].query_id,
+        }
+
+    @classmethod
+    def build_unfavorite_tweet_payload(cls, tweet_id: str) -> dict[str, Any]:
+        """Build payload for UnfavoriteTweet mutation."""
+        return {
+            "variables": {
+                "tweet_id": tweet_id,
+            },
+            "queryId": GRAPHQL_ENDPOINTS[EndpointType.UNFAVORITE_TWEET].query_id,
+        }
+
+    @classmethod
+    def build_retweet_payload(cls, tweet_id: str) -> dict[str, Any]:
+        """Build payload for CreateRetweet mutation."""
+        return {
+            "variables": {
+                "tweet_id": tweet_id,
+                "dark_request": False,
+            },
+            "queryId": GRAPHQL_ENDPOINTS[EndpointType.CREATE_RETWEET].query_id,
+        }
+
+    @classmethod
+    def build_delete_retweet_payload(cls, tweet_id: str) -> dict[str, Any]:
+        """Build payload for DeleteRetweet mutation."""
+        return {
+            "variables": {
+                "source_tweet_id": tweet_id,
+                "dark_request": False,
+            },
+            "queryId": GRAPHQL_ENDPOINTS[EndpointType.DELETE_RETWEET].query_id,
+        }
+
+
+def is_mutation_endpoint(endpoint_type: EndpointType) -> bool:
+    """Check if an endpoint type is a mutation (POST) endpoint."""
+    endpoint = GRAPHQL_ENDPOINTS.get(endpoint_type)
+    return endpoint is not None and endpoint.method == "POST"

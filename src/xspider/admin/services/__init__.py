@@ -17,6 +17,13 @@ from xspider.admin.services.proxy_checker import ProxyCheckerService
 from xspider.admin.services.topology_service import TopologyService
 from xspider.admin.services.webhook_service import WebhookService
 
+# Growth & Engagement services (运营增长系统)
+from xspider.admin.services.content_rewrite_service import ContentRewriteService
+from xspider.admin.services.operating_account_service import OperatingAccountService
+from xspider.admin.services.shadowban_checker_service import ShadowbanCheckerService
+from xspider.admin.services.smart_interaction_service import SmartInteractionService
+from xspider.admin.services.targeted_comment_service import TargetedCommentService
+
 __all__ = [
     "AccountMonitorService",
     "AudienceOverlapService",
@@ -34,4 +41,10 @@ __all__ = [
     "ProxyCheckerService",
     "TopologyService",
     "WebhookService",
+    # Growth & Engagement services (运营增长系统)
+    "ContentRewriteService",
+    "OperatingAccountService",
+    "ShadowbanCheckerService",
+    "SmartInteractionService",
+    "TargetedCommentService",
 ]

@@ -27,8 +27,10 @@ from xspider.core.config import TwitterToken
 from xspider.twitter.auth import TokenPool
 from xspider.twitter.endpoints import (
     EndpointType,
+    MutationRequestBuilder,
     RequestBuilder,
     get_endpoint,
+    is_mutation_endpoint,
 )
 from xspider.twitter.models import (
     FollowingPage,
@@ -582,6 +584,338 @@ class TwitterGraphQLClient:
             "proxy_pool": self.proxy_pool.get_stats(),
             "rate_limiter": self.rate_limiter.get_stats(),
         }
+
+    # =========================================================================
+    # Mutation Methods (POST) - Growth & Engagement System
+    # =========================================================================
+
+    async def _post_request(
+        self,
+        endpoint_type: EndpointType,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Make a GraphQL POST mutation request with retry logic.
+
+        Args:
+            endpoint_type: The mutation endpoint type.
+            payload: The request payload (variables, features, queryId).
+
+        Returns:
+            The response data dictionary.
+
+        Raises:
+            ScrapingError: If the request fails after retries.
+            RateLimitError: If rate limited.
+            AuthenticationError: If authentication fails.
+        """
+        if not is_mutation_endpoint(endpoint_type):
+            raise ScrapingError(f"Endpoint {endpoint_type.value} is not a mutation endpoint")
+
+        endpoint = get_endpoint(endpoint_type)
+        url = RequestBuilder.build_url(endpoint)
+        endpoint_name = f"mutation_{endpoint_type.value}"
+
+        await self.rate_limiter.acquire(endpoint_name)
+
+        start_time = time.time()
+
+        async for attempt in AsyncRetrying(
+            stop=stop_after_attempt(self.config.max_retries),
+            wait=wait_exponential(
+                min=self.config.retry_wait_min,
+                max=self.config.retry_wait_max,
+            ),
+            retry=retry_if_exception_type((ScrapingError, httpx.HTTPError)),
+            reraise=True,
+        ):
+            with attempt:
+                async with self._get_client() as client:
+                    try:
+                        response = await client.post(url, json=payload)
+                        response_time = (time.time() - start_time) * 1000
+
+                        self._parse_rate_limit_headers(response, endpoint_name)
+
+                        if response.status_code != 200:
+                            self._handle_error_response(response, endpoint_name)
+
+                        if self._current_token:
+                            self.token_pool.mark_token_success(self._current_token)
+                        if self._current_proxy:
+                            self.proxy_pool.mark_proxy_success(
+                                self._current_proxy, response_time
+                            )
+                        self.rate_limiter.on_success(endpoint_name)
+
+                        data = response.json()
+                        return self._validate_mutation_response(data)
+
+                    except httpx.HTTPError as e:
+                        if self._current_token:
+                            self.token_pool.mark_token_error(self._current_token)
+                        if self._current_proxy:
+                            self.proxy_pool.mark_proxy_error(self._current_proxy)
+
+                        logger.warning(
+                            "HTTP error during mutation request",
+                            extra={
+                                "endpoint": endpoint_name,
+                                "error": str(e),
+                                "attempt": attempt.retry_state.attempt_number,
+                            },
+                        )
+                        raise
+
+        raise ScrapingError(f"Mutation failed after {self.config.max_retries} attempts")
+
+    def _validate_mutation_response(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Validate mutation response for errors."""
+        if "errors" in data:
+            errors = data["errors"]
+            error_messages = [e.get("message", "Unknown error") for e in errors]
+            error_str = "; ".join(error_messages)
+
+            for error in errors:
+                code = error.get("code")
+                message = error.get("message", "")
+
+                if code == 32:
+                    raise AuthenticationError("Could not authenticate")
+                elif code == 88:
+                    raise RateLimitError("Rate limit exceeded")
+                elif code == 187:
+                    raise ScrapingError("Status is a duplicate")
+                elif code == 226:
+                    raise ScrapingError("Tweet looks like spam")
+                elif code == 385:
+                    raise ScrapingError("Cannot reply to this tweet")
+                elif "suspended" in message.lower():
+                    raise ScrapingError("Account is suspended")
+
+            logger.warning("GraphQL mutation errors", extra={"errors": error_str})
+            raise ScrapingError(f"Mutation failed: {error_str}")
+
+        return data
+
+    async def post_tweet(
+        self,
+        text: str,
+        media_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Post a new tweet.
+
+        Args:
+            text: Tweet text content (max 280 characters).
+            media_ids: Optional list of media IDs to attach.
+
+        Returns:
+            Dictionary with tweet data including tweet_id.
+
+        Raises:
+            ScrapingError: If posting fails.
+        """
+        payload = MutationRequestBuilder.build_create_tweet_payload(
+            text=text,
+            media_ids=media_ids,
+        )
+        data = await self._post_request(EndpointType.CREATE_TWEET, payload)
+
+        tweet_result = (
+            data.get("data", {})
+            .get("create_tweet", {})
+            .get("tweet_results", {})
+            .get("result", {})
+        )
+
+        return {
+            "tweet_id": tweet_result.get("rest_id"),
+            "text": text,
+            "raw_response": tweet_result,
+        }
+
+    async def reply_to_tweet(
+        self,
+        tweet_id: str,
+        text: str,
+        media_ids: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Reply to an existing tweet.
+
+        Args:
+            tweet_id: ID of the tweet to reply to.
+            text: Reply text content.
+            media_ids: Optional list of media IDs to attach.
+
+        Returns:
+            Dictionary with reply tweet data.
+
+        Raises:
+            ScrapingError: If replying fails.
+        """
+        payload = MutationRequestBuilder.build_create_tweet_payload(
+            text=text,
+            reply_to_tweet_id=tweet_id,
+            media_ids=media_ids,
+        )
+        data = await self._post_request(EndpointType.CREATE_TWEET, payload)
+
+        tweet_result = (
+            data.get("data", {})
+            .get("create_tweet", {})
+            .get("tweet_results", {})
+            .get("result", {})
+        )
+
+        return {
+            "tweet_id": tweet_result.get("rest_id"),
+            "reply_to_tweet_id": tweet_id,
+            "text": text,
+            "raw_response": tweet_result,
+        }
+
+    async def quote_tweet(
+        self,
+        tweet_id: str,
+        text: str,
+    ) -> dict[str, Any]:
+        """Quote an existing tweet.
+
+        Args:
+            tweet_id: ID of the tweet to quote.
+            text: Quote text content.
+
+        Returns:
+            Dictionary with quote tweet data.
+        """
+        payload = MutationRequestBuilder.build_create_tweet_payload(
+            text=text,
+            quote_tweet_id=tweet_id,
+        )
+        data = await self._post_request(EndpointType.CREATE_TWEET, payload)
+
+        tweet_result = (
+            data.get("data", {})
+            .get("create_tweet", {})
+            .get("tweet_results", {})
+            .get("result", {})
+        )
+
+        return {
+            "tweet_id": tweet_result.get("rest_id"),
+            "quoted_tweet_id": tweet_id,
+            "text": text,
+            "raw_response": tweet_result,
+        }
+
+    async def delete_tweet(self, tweet_id: str) -> bool:
+        """Delete a tweet.
+
+        Args:
+            tweet_id: ID of the tweet to delete.
+
+        Returns:
+            True if deletion was successful.
+        """
+        payload = MutationRequestBuilder.build_delete_tweet_payload(tweet_id)
+        data = await self._post_request(EndpointType.DELETE_TWEET, payload)
+
+        # Check if deletion was successful
+        result = data.get("data", {}).get("delete_tweet", {})
+        return result.get("tweet_results") is not None or "delete_tweet" in data.get("data", {})
+
+    async def like_tweet(self, tweet_id: str) -> bool:
+        """Like a tweet.
+
+        Args:
+            tweet_id: ID of the tweet to like.
+
+        Returns:
+            True if like was successful.
+        """
+        payload = MutationRequestBuilder.build_favorite_tweet_payload(tweet_id)
+        data = await self._post_request(EndpointType.FAVORITE_TWEET, payload)
+
+        result = data.get("data", {}).get("favorite_tweet")
+        return result == "Done" or result is not None
+
+    async def unlike_tweet(self, tweet_id: str) -> bool:
+        """Unlike a tweet.
+
+        Args:
+            tweet_id: ID of the tweet to unlike.
+
+        Returns:
+            True if unlike was successful.
+        """
+        payload = MutationRequestBuilder.build_unfavorite_tweet_payload(tweet_id)
+        data = await self._post_request(EndpointType.UNFAVORITE_TWEET, payload)
+
+        result = data.get("data", {}).get("unfavorite_tweet")
+        return result == "Done" or result is not None
+
+    async def retweet(self, tweet_id: str) -> dict[str, Any]:
+        """Retweet a tweet.
+
+        Args:
+            tweet_id: ID of the tweet to retweet.
+
+        Returns:
+            Dictionary with retweet data.
+        """
+        payload = MutationRequestBuilder.build_retweet_payload(tweet_id)
+        data = await self._post_request(EndpointType.CREATE_RETWEET, payload)
+
+        retweet_result = (
+            data.get("data", {})
+            .get("create_retweet", {})
+            .get("retweet_results", {})
+            .get("result", {})
+        )
+
+        return {
+            "retweet_id": retweet_result.get("rest_id"),
+            "source_tweet_id": tweet_id,
+            "raw_response": retweet_result,
+        }
+
+    async def unretweet(self, tweet_id: str) -> bool:
+        """Remove a retweet.
+
+        Args:
+            tweet_id: ID of the original tweet to unretweet.
+
+        Returns:
+            True if unretweet was successful.
+        """
+        payload = MutationRequestBuilder.build_delete_retweet_payload(tweet_id)
+        data = await self._post_request(EndpointType.DELETE_RETWEET, payload)
+
+        result = data.get("data", {}).get("unretweet", {})
+        return "source_tweet_results" in result or result is not None
+
+    async def check_can_reply(self, tweet_id: str) -> dict[str, Any]:
+        """Check if the current user can reply to a tweet.
+
+        Args:
+            tweet_id: ID of the tweet to check.
+
+        Returns:
+            Dictionary with reply permissions.
+        """
+        try:
+            tweet = await self.get_tweet(tweet_id)
+            return {
+                "can_reply": True,
+                "tweet_id": tweet_id,
+                "author_id": tweet.author.id,
+                "author_screen_name": tweet.author.screen_name,
+            }
+        except ScrapingError as e:
+            return {
+                "can_reply": False,
+                "tweet_id": tweet_id,
+                "reason": str(e),
+            }
 
     async def close(self) -> None:
         """Close the client and cleanup resources."""
