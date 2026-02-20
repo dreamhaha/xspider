@@ -15,15 +15,21 @@ from xspider.admin.models import (
     AdminUser,
     CreditTransaction,
     DiscoveredInfluencer,
+    InfluencerRelationship,
     SearchStatus,
     TransactionType,
     UserSearch,
 )
 from xspider.admin.schemas import (
+    GraphEdgeResponse,
+    GraphNodeResponse,
     InfluencerResponse,
+    RelationshipResponse,
     SearchCreate,
     SearchDetailResponse,
     SearchEstimate,
+    SearchGraphResponse,
+    SearchProgressResponse,
     SearchResponse,
 )
 
@@ -119,10 +125,127 @@ async def get_search(
     )
     influencers = list(inf_result.scalars().all())
 
+    # Get relationships
+    rel_result = await db.execute(
+        select(InfluencerRelationship)
+        .where(InfluencerRelationship.search_id == search_id)
+    )
+    relationships = list(rel_result.scalars().all())
+
     return {
         **SearchResponse.model_validate(search).model_dump(),
         "influencers": [InfluencerResponse.model_validate(i) for i in influencers],
+        "relationships": [RelationshipResponse.model_validate(r) for r in relationships],
     }
+
+
+@router.get("/{search_id}/progress", response_model=SearchProgressResponse)
+async def get_search_progress(
+    search_id: int,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> UserSearch:
+    """Get search task progress for polling."""
+    result = await db.execute(
+        select(UserSearch).where(UserSearch.id == search_id)
+    )
+    search = result.scalar_one_or_none()
+
+    if not search:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Search not found",
+        )
+
+    # Check access
+    if search.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    return search
+
+
+@router.get("/{search_id}/graph", response_model=SearchGraphResponse)
+async def get_search_graph(
+    search_id: int,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+    max_nodes: int = Query(500, ge=10, le=2000),
+) -> SearchGraphResponse:
+    """Get relationship graph data for visualization."""
+    result = await db.execute(
+        select(UserSearch).where(UserSearch.id == search_id)
+    )
+    search = result.scalar_one_or_none()
+
+    if not search:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Search not found",
+        )
+
+    # Check access
+    if search.user_id != current_user.id and current_user.role.value != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
+
+    # Get top influencers (limit nodes for performance)
+    inf_result = await db.execute(
+        select(DiscoveredInfluencer)
+        .where(DiscoveredInfluencer.search_id == search_id)
+        .order_by(DiscoveredInfluencer.pagerank_score.desc())
+        .limit(max_nodes)
+    )
+    influencers = list(inf_result.scalars().all())
+
+    # Build set of included node IDs
+    node_ids = {inf.twitter_user_id for inf in influencers}
+
+    # Get relationships between included nodes
+    rel_result = await db.execute(
+        select(InfluencerRelationship)
+        .where(InfluencerRelationship.search_id == search_id)
+    )
+    all_relationships = list(rel_result.scalars().all())
+
+    # Filter relationships to only include edges between visible nodes
+    edges = [
+        GraphEdgeResponse(source=r.source_twitter_id, target=r.target_twitter_id)
+        for r in all_relationships
+        if r.source_twitter_id in node_ids and r.target_twitter_id in node_ids
+    ]
+
+    # Build nodes
+    nodes = [
+        GraphNodeResponse(
+            id=inf.twitter_user_id,
+            screen_name=inf.screen_name,
+            name=inf.name,
+            followers_count=inf.followers_count,
+            depth=inf.depth,
+            pagerank_score=inf.pagerank_score,
+        )
+        for inf in influencers
+    ]
+
+    # Calculate stats
+    depth_counts = {}
+    for inf in influencers:
+        depth_counts[inf.depth] = depth_counts.get(inf.depth, 0) + 1
+
+    stats = {
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "total_relationships": len(all_relationships),
+        "max_depth": max(inf.depth for inf in influencers) if influencers else 0,
+        **{f"depth_{d}_count": c for d, c in depth_counts.items()},
+    }
+
+    return SearchGraphResponse(nodes=nodes, edges=edges, stats=stats)
 
 
 @router.post("/estimate", response_model=SearchEstimate)
@@ -167,6 +290,7 @@ async def create_search(
         user_id=current_user.id,
         keywords=request.keywords,
         industry=request.industry,
+        crawl_depth=request.crawl_depth,
         status=SearchStatus.PENDING,
     )
     db.add(search)
@@ -229,6 +353,7 @@ async def start_search(
 
     # Update status
     search.status = SearchStatus.RUNNING
+    search.progress_updated_at = datetime.now(timezone.utc)
 
     await db.commit()
     await db.refresh(search)
@@ -244,7 +369,7 @@ async def cancel_search(
     current_user: Annotated[AdminUser, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
 ) -> UserSearch:
-    """Cancel a running search task."""
+    """Cancel a running search task and refund credits."""
     result = await db.execute(
         select(UserSearch).where(UserSearch.id == search_id)
     )
@@ -268,8 +393,29 @@ async def cancel_search(
             detail=f"Cannot cancel search with status: {search.status.value}",
         )
 
+    # Refund credits if any were used
+    refund_amount = search.credits_used
+    if refund_amount > 0:
+        # Get the search owner for refund
+        owner_result = await db.execute(
+            select(AdminUser).where(AdminUser.id == search.user_id)
+        )
+        owner = owner_result.scalar_one()
+        owner.credits += refund_amount
+
+        # Create refund transaction
+        refund_transaction = CreditTransaction(
+            user_id=search.user_id,
+            amount=refund_amount,
+            balance_after=owner.credits,
+            type=TransactionType.REFUND,
+            description=f"Refund for cancelled search #{search.id}: {search.keywords[:30]}",
+            search_id=search.id,
+        )
+        db.add(refund_transaction)
+
     search.status = SearchStatus.FAILED
-    search.error_message = "Cancelled by user"
+    search.error_message = f"Cancelled by user. Refunded {refund_amount} credits."
     search.completed_at = datetime.now(timezone.utc)
 
     await db.commit()

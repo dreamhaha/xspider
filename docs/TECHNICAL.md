@@ -5,14 +5,15 @@
 1. [系统概述](#1-系统概述)
 2. [架构设计](#2-架构设计)
 3. [模块详解](#3-模块详解)
-4. [销售转化模块](#4-销售转化模块) *(NEW)*
-5. [国际化模块 (i18n)](#5-国际化模块-i18n) *(NEW)*
-6. [数据模型](#6-数据模型)
-7. [核心算法](#7-核心算法)
-8. [API 接口](#8-api-接口)
-9. [配置指南](#9-配置指南)
-10. [开发指南](#10-开发指南)
-11. [部署运维](#11-部署运维)
+4. [销售转化模块](#4-销售转化模块)
+5. [国际化模块 (i18n)](#5-国际化模块-i18n)
+6. [账号分组管理](#6-账号分组管理) *(NEW)*
+7. [数据模型](#7-数据模型)
+8. [核心算法](#8-核心算法)
+9. [API 接口](#9-api-接口)
+10. [配置指南](#10-配置指南)
+11. [开发指南](#11-开发指南)
+12. [部署运维](#12-部署运维)
 
 ---
 
@@ -1523,9 +1524,183 @@ curl -H "Accept-Language: de" http://localhost:8000/api/auth/login \
 
 ---
 
-## 6. 数据模型
+## 6. 账号分组管理
 
-### 6.1 数据库 Schema
+### 6.1 概述
+
+账号分组功能允许管理员将 Twitter 账号组织到不同分组中，支持：
+- 创建、编辑、删除分组
+- 设置分组标签（多个）
+- 控制分组活跃状态
+- 任务执行时自动过滤非活跃分组账号
+- 向后兼容（未分组账号默认可用）
+
+### 6.2 数据模型
+
+#### AccountGroup 模型
+
+```python
+class AccountGroup(Base):
+    """账号分组"""
+    __tablename__ = "account_groups"
+
+    id: int                      # 主键
+    name: str                    # 分组名称 (唯一)
+    description: str | None      # 描述
+    tags: str | None             # 标签 (JSON array)
+    color: str | None            # 颜色 (#RRGGBB)
+    is_active: bool              # 是否活跃 (默认True)
+    priority: int                # 优先级 (默认0)
+    account_count: int           # 账号总数 (缓存)
+    active_account_count: int    # 活跃账号数 (缓存)
+    created_at: datetime         # 创建时间
+    updated_at: datetime         # 更新时间
+    created_by: int | None       # 创建者ID
+```
+
+#### TwitterAccount 扩展字段
+
+```python
+# 新增外键字段
+group_id: int | None = ForeignKey("account_groups.id", ondelete="SET NULL")
+group: AccountGroup | None = relationship(back_populates="accounts")
+```
+
+### 6.3 API 端点
+
+#### 分组管理 `/api/account-groups/`
+
+| 方法 | 端点 | 功能 |
+|------|------|------|
+| GET | `/` | 列出所有分组 |
+| POST | `/` | 创建分组 |
+| GET | `/{id}` | 获取分组详情 |
+| PUT | `/{id}` | 更新分组 |
+| DELETE | `/{id}` | 删除分组 |
+| POST | `/{id}/toggle-active` | 切换活跃状态 |
+| POST | `/{id}/add-accounts` | 添加账号到分组 |
+| POST | `/{id}/remove-accounts` | 从分组移除账号 |
+| GET | `/tags` | 获取所有标签 |
+
+#### 账号筛选 `/api/accounts/`
+
+| 方法 | 端点 | 功能 |
+|------|------|------|
+| GET | `/?group_id={id}` | 按分组筛选账号 |
+| GET | `/?ungrouped=true` | 获取未分组账号 |
+| POST | `/batch-assign-group` | 批量分配账号到分组 |
+
+### 6.4 核心逻辑
+
+#### 活跃账号筛选
+
+SearchWorker 在获取可用账号时，自动过滤非活跃分组：
+
+```python
+async def _get_active_accounts(self, session: AsyncSession):
+    # 获取活跃分组 ID
+    active_groups_result = await session.execute(
+        select(AccountGroup.id).where(AccountGroup.is_active == True)
+    )
+    active_group_ids = set(row[0] for row in active_groups_result.fetchall())
+
+    # 获取活跃分组或未分组的账号
+    result = await session.execute(
+        select(TwitterAccount)
+        .where(TwitterAccount.status == AccountStatus.ACTIVE)
+        .where(
+            or_(
+                TwitterAccount.group_id == None,  # 未分组账号
+                TwitterAccount.group_id.in_(active_group_ids)  # 活跃分组账号
+            )
+        )
+        .order_by(TwitterAccount.last_used_at.asc().nulls_first())
+    )
+    return list(result.scalars().all())
+```
+
+### 6.5 向后兼容性
+
+- **未分组账号**: `group_id=NULL` 的账号默认可用
+- **无分组时**: 行为与分组功能添加前完全一致
+- **删除分组**: 账号变为未分组（不删除账号）
+
+### 6.6 前端界面
+
+#### 分组管理页面 `/admin/accounts/groups`
+
+- 分组列表（名称、标签、账号数、状态）
+- 创建/编辑分组模态框
+- 切换活跃状态按钮
+- 删除分组
+
+#### 账号列表增强 `/admin/accounts`
+
+- 分组筛选下拉框
+- 表格增加"分组"列
+- 复选框批量选择
+- 批量分配分组功能
+
+### 6.7 i18n 翻译
+
+分组功能支持多语言，翻译键位于 `groups` 命名空间：
+
+```json
+{
+  "groups": {
+    "title": "Account Groups",
+    "description": "Organize accounts into groups for better management",
+    "add_group": "Add Group",
+    "edit_group": "Edit Group",
+    "group_name": "Group Name",
+    "tags": "Tags",
+    "priority": "Priority",
+    "account_count": "Total Accounts",
+    "active_account_count": "Active Accounts",
+    "is_active": "Active",
+    "confirm_delete": "Are you sure you want to delete this group?",
+    "confirm_toggle": "Are you sure you want to toggle the active status?"
+  }
+}
+```
+
+---
+
+## 7. 数据模型
+
+### 7.1 数据库 Schema
+
+#### account_groups 表 (新增)
+
+```sql
+CREATE TABLE account_groups (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            VARCHAR(100) NOT NULL UNIQUE,
+    description     TEXT,
+    tags            TEXT,                      -- JSON array
+    color           VARCHAR(7),                -- #RRGGBB
+    is_active       BOOLEAN DEFAULT TRUE,
+    priority        INTEGER DEFAULT 0,
+    account_count   INTEGER DEFAULT 0,
+    active_account_count INTEGER DEFAULT 0,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by      INTEGER REFERENCES users(id)
+);
+
+CREATE INDEX idx_account_groups_is_active ON account_groups(is_active);
+CREATE INDEX idx_account_groups_priority ON account_groups(priority);
+```
+
+#### twitter_accounts 表扩展
+
+```sql
+-- 新增分组外键
+ALTER TABLE twitter_accounts ADD COLUMN group_id INTEGER REFERENCES account_groups(id) ON DELETE SET NULL;
+CREATE INDEX idx_twitter_accounts_group_id ON twitter_accounts(group_id);
+```
+
+### 7.2 原有数据库 Schema
 
 ```sql
 -- 用户表
@@ -1595,7 +1770,7 @@ CREATE INDEX idx_rankings_hidden ON rankings(hidden_score DESC);
 CREATE INDEX idx_audits_relevance ON audits(relevance_score DESC);
 ```
 
-### 6.2 关系图
+### 7.3 关系图
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -1615,9 +1790,9 @@ CREATE INDEX idx_audits_relevance ON audits(relevance_score DESC);
 
 ---
 
-## 7. 核心算法
+## 8. 核心算法
 
-### 7.1 PageRank 算法
+### 8.1 PageRank 算法
 
 PageRank 通过链接结构计算节点重要性。在 KOL 发现场景中，被更多有影响力的用户关注的人，其权重更高。
 
@@ -1658,7 +1833,7 @@ def compute_pagerank(graph: nx.DiGraph) -> dict[str, float]:
     )
 ```
 
-### 7.2 隐形大佬算法
+### 8.2 隐形大佬算法
 
 #### 核心思想
 
@@ -1690,7 +1865,7 @@ Hidden Score = PageRank Score / log(Followers Count + 2)
 | Established | followers >= 50K | 已确立的大 V |
 | Potential | 其他 | 潜力股，待观察 |
 
-### 7.3 BFS 网络遍历
+### 8.3 BFS 网络遍历
 
 ```python
 算法: BFS_CRAWL(seeds, max_depth)
@@ -1733,9 +1908,9 @@ Hidden Score = PageRank Score / log(Followers Count + 2)
 
 ---
 
-## 8. API 接口
+## 9. API 接口
 
-### 8.1 内部 API
+### 9.1 内部 API
 
 #### TwitterGraphQLClient
 
@@ -1798,7 +1973,7 @@ class ContentAuditor:
     async def audit_and_save(user_id: str, industry: str) -> AuditResult
 ```
 
-### 8.2 CLI 命令
+### 9.2 CLI 命令
 
 ```bash
 # 种子采集
@@ -1831,9 +2006,9 @@ xspider export all --output-dir exports/
 
 ---
 
-## 9. 配置指南
+## 10. 配置指南
 
-### 9.1 环境变量
+### 10.1 环境变量
 
 创建 `.env` 文件:
 
@@ -1879,7 +2054,7 @@ LOG_LEVEL=INFO                 # DEBUG, INFO, WARNING, ERROR
 LOG_FORMAT=json                # json 或 console
 ```
 
-### 9.2 获取 Twitter Token
+### 10.2 获取 Twitter Token
 
 1. **浏览器登录 Twitter**
 2. **打开开发者工具 (F12)**
@@ -1893,7 +2068,7 @@ x-csrf-token: abc123...                                 -> ct0
 cookie: auth_token=xyz789...                           -> auth_token
 ```
 
-### 9.3 代理配置建议
+### 10.3 代理配置建议
 
 | 爬取规模 | 推荐代理类型 | 预估成本 |
 |---------|-------------|---------|
@@ -1908,9 +2083,9 @@ cookie: auth_token=xyz789...                           -> auth_token
 
 ---
 
-## 10. 开发指南
+## 11. 开发指南
 
-### 10.1 项目设置
+### 11.1 项目设置
 
 ```bash
 # 克隆项目
@@ -1931,7 +2106,7 @@ python -c "import asyncio; from xspider.storage import init_database; asyncio.ru
 pytest tests/ -v --cov=xspider
 ```
 
-### 10.2 代码规范
+### 11.2 代码规范
 
 ```bash
 # 格式化
@@ -1944,7 +2119,7 @@ ruff check src/ tests/
 mypy src/
 ```
 
-### 10.3 添加新的 GraphQL 端点
+### 11.3 添加新的 GraphQL 端点
 
 ```python
 # 1. 在 endpoints.py 中添加端点类型
@@ -1968,7 +2143,7 @@ async def new_endpoint_method(self, param: str) -> Result:
     return self._parse_response(response)
 ```
 
-### 10.4 添加新的 CLI 命令
+### 11.4 添加新的 CLI 命令
 
 ```python
 # 1. 创建命令文件 src/xspider/cli/commands/newcmd.py
@@ -1990,7 +2165,7 @@ from xspider.cli.commands import newcmd
 app.add_typer(newcmd.app, name="newcmd")
 ```
 
-### 10.5 测试
+### 11.5 测试
 
 ```python
 # tests/unit/test_pagerank.py
@@ -2026,9 +2201,9 @@ async def test_graph_builder_from_database(mock_database):
 
 ---
 
-## 11. 部署运维
+## 12. 部署运维
 
-### 11.1 性能优化
+### 12.1 性能优化
 
 #### Token 池大小
 
@@ -2058,7 +2233,7 @@ async def process_in_batches(user_ids: list[str], batch_size: int = 1000):
         gc.collect()  # 主动回收内存
 ```
 
-### 11.2 监控指标
+### 12.2 监控指标
 
 ```python
 # 关键指标
@@ -2088,7 +2263,7 @@ metrics = {
 }
 ```
 
-### 11.3 故障处理
+### 12.3 故障处理
 
 | 故障类型 | 检测方式 | 自动恢复 |
 |---------|---------|---------|
@@ -2097,7 +2272,7 @@ metrics = {
 | 代理封禁 | 连接超时 | 切换代理，冷却 30 分钟 |
 | 数据库锁 | SQLITE_BUSY | 指数退避重试 |
 
-### 11.4 数据备份
+### 12.4 数据备份
 
 ```bash
 # 定期备份 SQLite 数据库
@@ -2219,8 +2394,8 @@ python-dotenv = ">=1.0.0"
 
 ---
 
-*文档版本: 2.0.0*
-*最后更新: 2024-02*
+*文档版本: 2.2.0*
+*最后更新: 2025-02*
 
 ### 更新日志
 
@@ -2229,3 +2404,4 @@ python-dotenv = ">=1.0.0"
 | 1.0.0 | 2024-01 | 初始版本 |
 | 2.0.0 | 2024-02 | 新增销售转化模块：CRM、AI破冰、意图分析、增长监测、受众重合、Webhook、拓扑可视化 |
 | 2.1.0 | 2025-02 | 新增国际化(i18n)支持：中文、英文、日文，自动语言检测 |
+| 2.2.0 | 2025-02 | 新增账号分组管理：分组CRUD、标签管理、活跃状态控制、任务执行自动过滤非活跃分组 |

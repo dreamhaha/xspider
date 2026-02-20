@@ -1,16 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Search History - xspider{% endblock %}
+{% block title %}{{ _("searches.search_history") }} - xspider{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
-        <h2><i class="bi bi-clock-history"></i> Search History</h2>
-        <p class="text-muted">View your past searches and results</p>
+        <h2><i class="bi bi-clock-history"></i> {{ _("searches.search_history") }}</h2>
+        <p class="text-muted">{{ _("searches.description") }}</p>
     </div>
     <div class="col-auto">
         <a href="/search" class="btn btn-primary">
-            <i class="bi bi-plus-lg"></i> New Search
+            <i class="bi bi-plus-lg"></i> {{ _("searches.new_search") }}
         </a>
     </div>
 </div>
@@ -19,11 +19,11 @@
 <div class="row mb-3">
     <div class="col-md-3">
         <select class="form-select" id="status-filter" onchange="loadSearches()">
-            <option value="">All Status</option>
-            <option value="pending">Pending</option>
-            <option value="running">Running</option>
-            <option value="completed">Completed</option>
-            <option value="failed">Failed</option>
+            <option value="">{{ _("accounts.all_status") }}</option>
+            <option value="pending">{{ _("searches.pending") }}</option>
+            <option value="running">{{ _("searches.running") }}</option>
+            <option value="completed">{{ _("searches.completed") }}</option>
+            <option value="failed">{{ _("searches.failed") }}</option>
         </select>
     </div>
 </div>
@@ -35,20 +35,20 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>ID</th>
-                        <th>Keywords</th>
-                        <th>Industry</th>
-                        <th>Status</th>
-                        <th>Seeds</th>
-                        <th>Crawled</th>
-                        <th>Credits</th>
-                        <th>Created</th>
-                        <th>Actions</th>
+                        <th>{{ _("searches.id") }}</th>
+                        <th>{{ _("searches.keywords") }}</th>
+                        <th>{{ _("searches.industry") }}</th>
+                        <th>{{ _("searches.status") }}</th>
+                        <th>{{ _("searches.seeds_found") }}</th>
+                        <th>{{ _("searches.users_crawled") }}</th>
+                        <th>{{ _("searches.credits_used") }}</th>
+                        <th>{{ _("searches.created_at") }}</th>
+                        <th>{{ _("common.actions") }}</th>
                     </tr>
                 </thead>
                 <tbody id="searches-table-body">
                     <tr>
-                        <td colspan="9" class="text-center py-4">Loading...</td>
+                        <td colspan="9" class="text-center py-4">{{ _("common.loading") }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -73,7 +73,7 @@ async function loadSearches() {
     } catch (error) {
         console.error('Error loading searches:', error);
         document.getElementById('searches-table-body').innerHTML =
-            '<tr><td colspan="9" class="text-center text-danger">Error loading searches</td></tr>';
+            `<tr><td colspan="9" class="text-center text-danger">${t('common.error')}</td></tr>`;
     }
 }
 
@@ -81,7 +81,7 @@ function renderSearches(searches) {
     const tbody = document.getElementById('searches-table-body');
 
     if (searches.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No searches found</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${t('searches.no_searches')}</td></tr>`;
         return;
     }
 
@@ -104,20 +104,20 @@ function renderSearches(searches) {
                 <td>${created}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
-                        <a href="/searches/${search.id}" class="btn btn-outline-primary" title="View">
+                        <a href="/searches/${search.id}" class="btn btn-outline-primary" title="${t('searches.view_results')}">
                             <i class="bi bi-eye"></i>
                         </a>
                         ${search.status === 'completed' ? `
-                        <button class="btn btn-outline-success" onclick="exportResults(${search.id}, 'csv')" title="Export CSV">
+                        <button class="btn btn-outline-success" onclick="exportResults(${search.id}, 'csv')" title="${t('searches.export_results')}">
                             <i class="bi bi-download"></i>
                         </button>
                         ` : ''}
                         ${search.status === 'running' || search.status === 'pending' ? `
-                        <button class="btn btn-outline-warning" onclick="cancelSearch(${search.id})" title="Cancel">
+                        <button class="btn btn-outline-warning" onclick="cancelSearch(${search.id})" title="${t('common.cancel')}">
                             <i class="bi bi-x-circle"></i>
                         </button>
                         ` : ''}
-                        <button class="btn btn-outline-danger" onclick="deleteSearch(${search.id})" title="Delete">
+                        <button class="btn btn-outline-danger" onclick="deleteSearch(${search.id})" title="${t('common.delete')}">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
@@ -129,10 +129,10 @@ function renderSearches(searches) {
 
 function getStatusBadge(status) {
     const badges = {
-        'pending': '<span class="badge bg-secondary">Pending</span>',
-        'running': '<span class="badge bg-primary">Running</span>',
-        'completed': '<span class="badge bg-success">Completed</span>',
-        'failed': '<span class="badge bg-danger">Failed</span>'
+        'pending': `<span class="badge bg-secondary">${t('status.pending')}</span>`,
+        'running': `<span class="badge bg-primary">${t('status.running')}</span>`,
+        'completed': `<span class="badge bg-success">${t('status.completed')}</span>`,
+        'failed': `<span class="badge bg-danger">${t('status.failed')}</span>`
     };
     return badges[status] || status;
 }
@@ -142,7 +142,7 @@ function formatDate(dateStr) {
 }
 
 async function cancelSearch(searchId) {
-    if (!confirm('Cancel this search?')) return;
+    if (!confirm(t('common.confirm'))) return;
 
     try {
         const response = await fetch(`/api/searches/${searchId}/cancel`, { method: 'POST' });
@@ -150,12 +150,12 @@ async function cancelSearch(searchId) {
             loadSearches();
         }
     } catch (error) {
-        alert('Error cancelling search');
+        alert(t('common.error'));
     }
 }
 
 async function deleteSearch(searchId) {
-    if (!confirm('Delete this search and all results?')) return;
+    if (!confirm(t('common.confirm_delete'))) return;
 
     try {
         const response = await fetch(`/api/searches/${searchId}`, { method: 'DELETE' });
@@ -163,7 +163,7 @@ async function deleteSearch(searchId) {
             loadSearches();
         }
     } catch (error) {
-        alert('Error deleting search');
+        alert(t('common.error'));
     }
 }
 

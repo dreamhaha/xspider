@@ -45,63 +45,64 @@ class GraphQLEndpoint:
     method: str = "GET"
 
 
-# Twitter GraphQL query IDs (extracted from Twitter Web client)
+# Twitter GraphQL query IDs (extracted from twikit library)
 # These may need to be updated periodically as Twitter changes them
+# Last updated: 2026-02-20 from https://github.com/d60/twikit
 GRAPHQL_ENDPOINTS: dict[EndpointType, GraphQLEndpoint] = {
     EndpointType.USER_BY_SCREEN_NAME: GraphQLEndpoint(
         endpoint_type=EndpointType.USER_BY_SCREEN_NAME,
-        query_id="G3KGOASz96M-Qu0nwmGXNg",
+        query_id="NimuplG1OB7Fd2btCLdBOw",
         operation_name="UserByScreenName",
     ),
     EndpointType.USER_BY_REST_ID: GraphQLEndpoint(
         endpoint_type=EndpointType.USER_BY_REST_ID,
-        query_id="QdS5LJDl99iL_KUzckdfNQ",
+        query_id="tD8zKvQzwY3kdx5yz6YmOw",
         operation_name="UserByRestId",
     ),
     EndpointType.FOLLOWING: GraphQLEndpoint(
         endpoint_type=EndpointType.FOLLOWING,
-        query_id="iSicc7LrzWGBgDPL0tM_TQ",
+        query_id="2vUj-_Ek-UmBVDNtd8OnQA",
         operation_name="Following",
     ),
     EndpointType.FOLLOWERS: GraphQLEndpoint(
         endpoint_type=EndpointType.FOLLOWERS,
-        query_id="rRXFSG5vR6drKr5M37YOTw",
+        query_id="gC_lyAxZOptAMLCJX5UhWw",
         operation_name="Followers",
     ),
     EndpointType.USER_TWEETS: GraphQLEndpoint(
         endpoint_type=EndpointType.USER_TWEETS,
-        query_id="V1ze5q3ijDS1VeLwLY0m7g",
+        query_id="QWF3SzpHmykQHsQMixG0cg",
         operation_name="UserTweets",
     ),
     EndpointType.USER_TWEETS_AND_REPLIES: GraphQLEndpoint(
         endpoint_type=EndpointType.USER_TWEETS_AND_REPLIES,
-        query_id="E4wA5vo2sjVyvpliUffSCw",
+        query_id="vMkJyzx1wdmvOeeNG0n6Wg",
         operation_name="UserTweetsAndReplies",
     ),
     EndpointType.TWEET_DETAIL: GraphQLEndpoint(
         endpoint_type=EndpointType.TWEET_DETAIL,
-        query_id="VWFGPVAGkZMGRKGe3GFFnA",
+        query_id="U0HTv-bAWTBYylwEMT7x5A",
         operation_name="TweetDetail",
     ),
     EndpointType.SEARCH_TIMELINE: GraphQLEndpoint(
         endpoint_type=EndpointType.SEARCH_TIMELINE,
-        query_id="gkjsKepM6gl_HmFWoWKfgg",
+        query_id="flaR-PUMshxFWZWPNpq4zA",
         operation_name="SearchTimeline",
     ),
     EndpointType.HOME_TIMELINE: GraphQLEndpoint(
         endpoint_type=EndpointType.HOME_TIMELINE,
-        query_id="HZmNLvTusg0cHcgSn1oBbA",
+        query_id="-X_hcgQzmHGl29-UXxz4sw",
         operation_name="HomeTimeline",
     ),
     EndpointType.LIKES: GraphQLEndpoint(
         endpoint_type=EndpointType.LIKES,
-        query_id="eSSNbhECHHWWALkkQq-YTA",
+        query_id="IohM3gxQHfvWePH5E3KuNA",
         operation_name="Likes",
     ),
     # Mutation endpoints (POST)
     EndpointType.CREATE_TWEET: GraphQLEndpoint(
         endpoint_type=EndpointType.CREATE_TWEET,
-        query_id="a1p9RWpkYKBjWvUR01Y6Cw",
+        query_id="SiM_cAu83R0wnrpmKQQSEw",
         operation_name="CreateTweet",
         method="POST",
     ),
@@ -138,18 +139,10 @@ GRAPHQL_ENDPOINTS: dict[EndpointType, GraphQLEndpoint] = {
 }
 
 
-# Base features for GraphQL requests
+# Base features for GraphQL requests (from twikit library)
 BASE_FEATURES: dict[str, bool] = {
-    "responsive_web_media_download_video_enabled": True,
-    "rweb_tipjar_consumption_enabled": True,
-    "responsive_web_graphql_exclude_directive_enabled": True,
-    "verified_phone_label_enabled": False,
     "creator_subscriptions_tweet_preview_api_enabled": True,
-    "responsive_web_graphql_timeline_navigation_enabled": True,
-    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
-    "communities_web_enable_tweet_community_results_fetch": True,
     "c9s_tweet_anatomy_moderator_badge_enabled": True,
-    "articles_preview_enabled": True,
     "tweetypie_unmention_optimization_enabled": True,
     "responsive_web_edit_tweet_api_enabled": True,
     "graphql_is_translatable_rweb_tweet_is_translatable_enabled": True,
@@ -157,13 +150,17 @@ BASE_FEATURES: dict[str, bool] = {
     "longform_notetweets_consumption_enabled": True,
     "responsive_web_twitter_article_tweet_consumption_enabled": True,
     "tweet_awards_web_tipping_enabled": False,
-    "creator_subscriptions_quote_tweet_preview_enabled": False,
+    "longform_notetweets_rich_text_read_enabled": True,
+    "longform_notetweets_inline_media_enabled": True,
+    "rweb_video_timestamps_enabled": True,
+    "responsive_web_graphql_exclude_directive_enabled": True,
+    "verified_phone_label_enabled": False,
     "freedom_of_speech_not_reach_fetch_enabled": True,
     "standardized_nudges_misinfo": True,
     "tweet_with_visibility_results_prefer_gql_limited_actions_policy_enabled": True,
-    "rweb_video_timestamps_enabled": True,
-    "longform_notetweets_rich_text_read_enabled": True,
-    "longform_notetweets_inline_media_enabled": True,
+    "responsive_web_media_download_video_enabled": False,
+    "responsive_web_graphql_skip_user_profile_image_extensions_enabled": False,
+    "responsive_web_graphql_timeline_navigation_enabled": True,
     "responsive_web_enhance_cards_enabled": False,
 }
 
@@ -181,18 +178,14 @@ USER_FEATURES: dict[str, bool] = {
     "responsive_web_graphql_timeline_navigation_enabled": True,
 }
 
-TIMELINE_FEATURES: dict[str, bool] = {
-    **BASE_FEATURES,
-    "interactive_text_enabled": True,
-    "responsive_web_text_conversations_enabled": False,
-    "responsive_web_home_pinned_timelines_enabled": True,
-}
+# Timeline features - same as base features for compatibility
+TIMELINE_FEATURES: dict[str, bool] = BASE_FEATURES
 
 
 class RequestBuilder:
     """Builds GraphQL request parameters."""
 
-    BASE_URL = "https://twitter.com/i/api/graphql"
+    BASE_URL = "https://x.com/i/api/graphql"
 
     @classmethod
     def build_url(cls, endpoint: GraphQLEndpoint) -> str:

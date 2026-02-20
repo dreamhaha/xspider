@@ -6,8 +6,10 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from xspider.admin.auth import decode_token, get_current_active_user
+from xspider.admin.auth import decode_token, get_current_active_user, get_db_session
 from xspider.admin.i18n import get_lang, t
 from xspider.admin.i18n.translator import get_all_translations
 from xspider.admin.models import AdminUser, UserRole
@@ -52,6 +54,22 @@ def get_optional_user(request: Request) -> AdminUser | None:
     )
 
 
+async def get_user_from_db(request: Request, db: AsyncSession) -> AdminUser | None:
+    """Get current user from database with actual credits."""
+    session_token = request.cookies.get("session_token")
+    if not session_token:
+        return None
+
+    payload = decode_token(session_token)
+    if not payload:
+        return None
+
+    result = await db.execute(
+        select(AdminUser).where(AdminUser.id == int(payload.sub))
+    )
+    return result.scalar_one_or_none()
+
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request) -> HTMLResponse:
     """Render login page."""
@@ -81,9 +99,12 @@ async def register_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/admin/dashboard", response_class=HTMLResponse)
-async def dashboard_page(request: Request) -> HTMLResponse:
+async def dashboard_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render admin dashboard."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -95,9 +116,12 @@ async def dashboard_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/admin/accounts", response_class=HTMLResponse)
-async def accounts_page(request: Request) -> HTMLResponse:
+async def accounts_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render Twitter accounts management page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     if user.role != UserRole.ADMIN:
@@ -110,10 +134,51 @@ async def accounts_page(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/admin/accounts/stats", response_class=HTMLResponse)
+async def accounts_stats_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render Twitter accounts statistics page for risk control."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user.role != UserRole.ADMIN:
+        return RedirectResponse(url="/admin/dashboard", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "accounts/stats.html",
+        get_template_context(request, user),
+    )
+
+
+@router.get("/admin/accounts/groups", response_class=HTMLResponse)
+async def accounts_groups_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render account groups management page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user.role != UserRole.ADMIN:
+        return RedirectResponse(url="/admin/dashboard", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "accounts/groups.html",
+        get_template_context(request, user),
+    )
+
+
 @router.get("/admin/proxies", response_class=HTMLResponse)
-async def proxies_page(request: Request) -> HTMLResponse:
+async def proxies_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render proxy management page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     if user.role != UserRole.ADMIN:
@@ -127,9 +192,12 @@ async def proxies_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/admin/users", response_class=HTMLResponse)
-async def users_page(request: Request) -> HTMLResponse:
+async def users_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render user management page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
     if user.role != UserRole.ADMIN:
@@ -143,9 +211,12 @@ async def users_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/search", response_class=HTMLResponse)
-async def search_page(request: Request) -> HTMLResponse:
+async def search_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render search page for users."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -157,9 +228,12 @@ async def search_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/searches", response_class=HTMLResponse)
-async def searches_list_page(request: Request) -> HTMLResponse:
+async def searches_list_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render search history page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -171,9 +245,13 @@ async def searches_list_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/searches/{search_id}", response_class=HTMLResponse)
-async def search_detail_page(request: Request, search_id: int) -> HTMLResponse:
+async def search_detail_page(
+    request: Request,
+    search_id: int,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render search detail page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -185,9 +263,12 @@ async def search_detail_page(request: Request, search_id: int) -> HTMLResponse:
 
 
 @router.get("/credits", response_class=HTMLResponse)
-async def credits_page(request: Request) -> HTMLResponse:
+async def credits_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render credits page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -199,9 +280,12 @@ async def credits_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/profile", response_class=HTMLResponse)
-async def profile_page(request: Request) -> HTMLResponse:
+async def profile_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render user profile page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -213,9 +297,12 @@ async def profile_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/admin/monitors", response_class=HTMLResponse)
-async def monitors_page(request: Request) -> HTMLResponse:
+async def monitors_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render influencer monitoring list page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 
@@ -227,9 +314,13 @@ async def monitors_page(request: Request) -> HTMLResponse:
 
 
 @router.get("/admin/monitors/{influencer_id}", response_class=HTMLResponse)
-async def monitor_detail_page(request: Request, influencer_id: int) -> HTMLResponse:
+async def monitor_detail_page(
+    request: Request,
+    influencer_id: int,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
     """Render influencer monitoring detail page."""
-    user = get_optional_user(request)
+    user = await get_user_from_db(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=302)
 

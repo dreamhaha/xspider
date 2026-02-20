@@ -20,6 +20,7 @@ from xspider.admin.models import (
     ProxyStatus,
     RewriteTone,
     RiskLevel,
+    SearchStage,
     SearchStatus,
     TransactionType,
     UserRole,
@@ -152,6 +153,76 @@ class UserListResponse(BaseModel):
 
 
 # ============================================================================
+# Account Group Schemas
+# ============================================================================
+
+
+class AccountGroupCreate(BaseModel):
+    """Create account group request."""
+
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str | None = None
+    tags: list[str] | None = None
+    color: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    is_active: bool = True
+    priority: int = 0
+
+
+class AccountGroupUpdate(BaseModel):
+    """Update account group request."""
+
+    name: str | None = Field(None, min_length=1, max_length=100)
+    description: str | None = None
+    tags: list[str] | None = None
+    color: str | None = Field(None, pattern=r"^#[0-9A-Fa-f]{6}$")
+    is_active: bool | None = None
+    priority: int | None = None
+
+
+class AccountGroupResponse(BaseModel):
+    """Account group response schema."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    description: str | None
+    tags: str | None  # JSON array stored as string
+    color: str | None
+    is_active: bool
+    priority: int
+    account_count: int
+    active_account_count: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AccountGroupListResponse(BaseModel):
+    """Account group list response."""
+
+    groups: list[AccountGroupResponse]
+    total: int
+
+
+class AccountGroupAssignRequest(BaseModel):
+    """Assign accounts to a group request."""
+
+    account_ids: list[int]
+
+
+class AccountGroupBatchAssignRequest(BaseModel):
+    """Batch assign accounts to groups."""
+
+    assignments: list[dict]  # List of {"account_id": int, "group_id": int | None}
+
+
+class AccountGroupTagsResponse(BaseModel):
+    """Response for all available tags."""
+
+    tags: list[str]
+
+
+# ============================================================================
 # Twitter Account Schemas
 # ============================================================================
 
@@ -175,6 +246,7 @@ class TwitterAccountUpdate(BaseModel):
     auth_token: str | None = None
     status: AccountStatus | None = None
     notes: str | None = None
+    group_id: int | None = None
 
 
 class TwitterAccountResponse(BaseModel):
@@ -189,9 +261,12 @@ class TwitterAccountResponse(BaseModel):
     last_check_at: datetime | None
     request_count: int
     error_count: int
+    last_error: str | None
     rate_limit_reset: datetime | None
     created_at: datetime
     notes: str | None
+    group_id: int | None = None
+    group_name: str | None = None
 
 
 class TwitterAccountDetailResponse(TwitterAccountResponse):
@@ -206,6 +281,59 @@ class TwitterAccountBatchImport(BaseModel):
     """Batch import Twitter accounts."""
 
     accounts: list[TwitterAccountCreate]
+
+
+class AndroidAccountCookie(BaseModel):
+    """Cookie from Android app export."""
+
+    name: str
+    value: str
+    domain: str | None = None
+
+
+class AndroidAccountData(BaseModel):
+    """Single account from Android app export format."""
+
+    Uid: str
+    AccountId: str | None = None
+    Language: str | None = None
+    TimeZone: str | None = None
+    Country: str | None = None
+    UserInfo: str | None = None  # JSON string
+    Cookies: list[AndroidAccountCookie]
+
+
+class AndroidAccountImport(BaseModel):
+    """Import Twitter accounts from Android app export.
+
+    Example input:
+    {
+        "accounts": [
+            {
+                "Uid": "1234567890",
+                "AccountId": "username",
+                "UserInfo": "{\"screen_name\": \"username\", ...}",
+                "Cookies": [
+                    {"name": "ct0", "value": "..."},
+                    {"name": "auth_token", "value": "..."}
+                ]
+            }
+        ]
+    }
+    """
+
+    accounts: list[AndroidAccountData]
+
+
+class AndroidImportResult(BaseModel):
+    """Result of Android account import."""
+
+    success: bool
+    imported: int
+    skipped: int
+    accounts: list[str]  # Screen names of imported accounts
+    skipped_accounts: list[str]  # Screen names of skipped accounts
+    errors: list[str] | None = None
 
 
 class AccountStatusCheck(BaseModel):
@@ -283,6 +411,7 @@ class SearchCreate(BaseModel):
 
     keywords: str = Field(..., min_length=1, max_length=500)
     industry: str | None = Field(None, max_length=100)
+    crawl_depth: int = Field(default=0, ge=0, le=5)  # 0=仅种子, 1-5=关注深度
 
 
 class SearchResponse(BaseModel):
@@ -293,6 +422,7 @@ class SearchResponse(BaseModel):
     id: int
     keywords: str
     industry: str | None
+    crawl_depth: int = 0
     seeds_found: int
     users_crawled: int
     credits_used: int
@@ -300,12 +430,18 @@ class SearchResponse(BaseModel):
     error_message: str | None
     created_at: datetime
     completed_at: datetime | None
+    # Progress tracking fields
+    progress_percent: int = 0
+    progress_stage: SearchStage | None = None
+    progress_message: str | None = None
+    progress_updated_at: datetime | None = None
 
 
 class SearchDetailResponse(SearchResponse):
     """Search detail response with influencers."""
 
     influencers: list["InfluencerResponse"]
+    relationships: list["RelationshipResponse"] = []
 
 
 class InfluencerResponse(BaseModel):
@@ -317,11 +453,50 @@ class InfluencerResponse(BaseModel):
     twitter_user_id: str
     screen_name: str
     name: str | None
+    description: str | None = None
     followers_count: int
+    following_count: int = 0
+    depth: int = 0
     pagerank_score: float
     hidden_score: float
     is_relevant: bool
     relevance_score: int
+
+
+class RelationshipResponse(BaseModel):
+    """Influencer relationship response."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source_twitter_id: str
+    target_twitter_id: str
+
+
+class GraphNodeResponse(BaseModel):
+    """Node in relationship graph."""
+
+    id: str  # twitter_user_id
+    screen_name: str
+    name: str | None
+    followers_count: int
+    depth: int
+    pagerank_score: float
+
+
+class GraphEdgeResponse(BaseModel):
+    """Edge in relationship graph (source follows target)."""
+
+    source: str  # source_twitter_id
+    target: str  # target_twitter_id
+
+
+class SearchGraphResponse(BaseModel):
+    """Relationship graph data for visualization."""
+
+    nodes: list[GraphNodeResponse]
+    edges: list[GraphEdgeResponse]
+    stats: dict[str, int]  # node_count, edge_count, max_depth, etc.
 
 
 class SearchEstimate(BaseModel):
@@ -329,6 +504,23 @@ class SearchEstimate(BaseModel):
 
     estimated_credits: int
     breakdown: dict[str, int]
+
+
+class SearchProgressResponse(BaseModel):
+    """Search progress response for polling."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    status: SearchStatus
+    progress_percent: int
+    progress_stage: SearchStage | None
+    progress_message: str | None
+    progress_updated_at: datetime | None
+    created_at: datetime
+    seeds_found: int
+    users_crawled: int
+    completed_at: datetime | None
 
 
 # ============================================================================

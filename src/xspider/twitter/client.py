@@ -44,15 +44,15 @@ from xspider.twitter.rate_limiter import AdaptiveRateLimiter
 logger = get_logger(__name__)
 
 
-# Twitter Web client headers
+# Twitter/X Web client headers
 DEFAULT_HEADERS = {
     "Accept": "*/*",
     "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate",
+    "Accept-Encoding": "gzip, deflate, br",
     "Content-Type": "application/json",
-    "Origin": "https://twitter.com",
-    "Referer": "https://twitter.com/",
-    "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+    "Origin": "https://x.com",
+    "Referer": "https://x.com/",
+    "Sec-Ch-Ua": '"Chromium";v="122", "Not(A:Brand";v="24", "Google Chrome";v="122"',
     "Sec-Ch-Ua-Mobile": "?0",
     "Sec-Ch-Ua-Platform": '"macOS"',
     "Sec-Fetch-Dest": "empty",
@@ -61,7 +61,7 @@ DEFAULT_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
+        "Chrome/122.0.0.0 Safari/537.36"
     ),
     "X-Twitter-Active-User": "yes",
     "X-Twitter-Client-Language": "en",
@@ -576,6 +576,101 @@ class TwitterGraphQLClient:
                 break
 
             cursor = page.next_cursor
+
+    async def search_users(
+        self,
+        query: str,
+        *,
+        max_results: int = 50,
+    ) -> AsyncIterator[TwitterUser]:
+        """Search for users by keyword in their bio/profile.
+
+        Args:
+            query: Search query string.
+            max_results: Maximum number of users to return.
+
+        Yields:
+            TwitterUser objects matching the search.
+        """
+        cursor = None
+        count = 0
+
+        while count < max_results:
+            # Build params using RequestBuilder
+            params = RequestBuilder.build_search_params(
+                query=query,
+                count=min(20, max_results - count),
+                cursor=cursor,
+                product="People",  # Search for people/users
+            )
+
+            try:
+                data = await self._request(EndpointType.SEARCH_TIMELINE, params)
+            except Exception as e:
+                logger.warning(
+                    "search_users.request_failed",
+                    query=query,
+                    error=str(e),
+                )
+                break
+
+            # Parse search results
+            try:
+                instructions = (
+                    data.get("data", {})
+                    .get("search_by_raw_query", {})
+                    .get("search_timeline", {})
+                    .get("timeline", {})
+                    .get("instructions", [])
+                )
+
+                users_found = False
+                next_cursor = None
+
+                for instruction in instructions:
+                    if instruction.get("type") == "TimelineAddEntries":
+                        entries = instruction.get("entries", [])
+                        for entry in entries:
+                            content = entry.get("content", {})
+                            item_content = content.get("itemContent", {})
+
+                            if item_content.get("itemType") == "TimelineUser":
+                                user_result = item_content.get("user_results", {}).get("result", {})
+                                if user_result and user_result.get("__typename") == "User":
+                                    legacy = user_result.get("legacy", {})
+                                    user = TwitterUser(
+                                        id=user_result.get("rest_id", ""),
+                                        username=legacy.get("screen_name", ""),
+                                        name=legacy.get("name", ""),
+                                        description=legacy.get("description", ""),
+                                        followers_count=legacy.get("followers_count", 0),
+                                        following_count=legacy.get("friends_count", 0),
+                                        tweet_count=legacy.get("statuses_count", 0),
+                                        verified=legacy.get("verified", False),
+                                        profile_image_url=legacy.get("profile_image_url_https", ""),
+                                        created_at=legacy.get("created_at"),
+                                    )
+                                    yield user
+                                    users_found = True
+                                    count += 1
+                                    if count >= max_results:
+                                        return
+
+                            # Check for cursor
+                            if content.get("cursorType") == "Bottom":
+                                next_cursor = content.get("value")
+
+                cursor = next_cursor
+                if not users_found or not cursor:
+                    break
+
+            except Exception as e:
+                logger.warning(
+                    "search_users.parse_failed",
+                    query=query,
+                    error=str(e),
+                )
+                break
 
     def get_stats(self) -> dict[str, Any]:
         """Get client statistics."""

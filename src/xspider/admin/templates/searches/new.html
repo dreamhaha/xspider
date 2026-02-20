@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}New Search - xspider{% endblock %}
+{% block title %}{{ _("searches.new_search") }} - xspider{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
-        <h2><i class="bi bi-search"></i> New Search</h2>
-        <p class="text-muted">Find influencers by keywords and industry</p>
+        <h2><i class="bi bi-search"></i> {{ _("searches.new_search") }}</h2>
+        <p class="text-muted">{{ _("searches.description") }}</p>
     </div>
 </div>
 
@@ -16,18 +16,18 @@
             <div class="card-body">
                 <form onsubmit="return submitSearch(event)">
                     <div class="mb-4">
-                        <label class="form-label"><strong>Search Keywords</strong></label>
+                        <label class="form-label"><strong>{{ _("searches.keywords") }}</strong></label>
                         <textarea class="form-control" id="keywords" rows="3" required
-                            placeholder="Enter keywords related to the influencers you're looking for..."></textarea>
+                            placeholder="{{ _('searches.keywords_placeholder') }}"></textarea>
                         <small class="text-muted">
-                            Examples: "crypto trader", "DeFi developer", "NFT artist"
+                            {{ _("searches.industry_placeholder") }}
                         </small>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label"><strong>Industry</strong></label>
+                        <label class="form-label"><strong>{{ _("searches.industry") }}</strong></label>
                         <select class="form-select" id="industry">
-                            <option value="">Select an industry (optional)</option>
+                            <option value="">{{ _("searches.industry") }} ({{ _("common.optional") }})</option>
                             <option value="crypto">Cryptocurrency / Web3</option>
                             <option value="tech">Technology</option>
                             <option value="finance">Finance / Trading</option>
@@ -42,16 +42,29 @@
                         </select>
                     </div>
 
+                    <div class="mb-4">
+                        <label class="form-label"><strong>{{ _("searches.crawl_depth") }}</strong></label>
+                        <select class="form-select" id="crawl-depth">
+                            <option value="0">{{ _("searches.depth_0") }}</option>
+                            <option value="1" selected>{{ _("searches.depth_1") }}</option>
+                            <option value="2">{{ _("searches.depth_2") }}</option>
+                            <option value="3">{{ _("searches.depth_3") }}</option>
+                            <option value="4">{{ _("searches.depth_4") }}</option>
+                            <option value="5">{{ _("searches.depth_5") }}</option>
+                        </select>
+                        <small class="text-muted">{{ _("searches.depth_hint") }}</small>
+                    </div>
+
                     <div class="alert alert-info" id="estimate-info">
-                        <i class="bi bi-info-circle"></i> Click "Estimate Cost" to see expected credit usage
+                        <i class="bi bi-info-circle"></i> {{ _("searches.estimate_cost") }}
                     </div>
 
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-outline-secondary" onclick="estimateCost()">
-                            <i class="bi bi-calculator"></i> Estimate Cost
+                            <i class="bi bi-calculator"></i> {{ _("searches.estimate_cost") }}
                         </button>
                         <button type="submit" class="btn btn-primary" id="submit-btn">
-                            <i class="bi bi-search"></i> Start Search
+                            <i class="bi bi-search"></i> {{ _("searches.start_search") }}
                         </button>
                     </div>
                 </form>
@@ -62,17 +75,17 @@
     <div class="col-md-4">
         <div class="card mb-3">
             <div class="card-header">
-                <i class="bi bi-coin"></i> Your Credits
+                <i class="bi bi-coin"></i> {{ _("searches.your_balance") }}
             </div>
             <div class="card-body text-center">
                 <h2 class="mb-0" id="current-credits">{{ user.credits }}</h2>
-                <small class="text-muted">Available credits</small>
+                <small class="text-muted">{{ _("credits.current_balance") }}</small>
             </div>
         </div>
 
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-info-circle"></i> Credit Costs
+                <i class="bi bi-info-circle"></i> {{ _("searches.credit_breakdown") }}
             </div>
             <div class="card-body">
                 <table class="table table-sm mb-0">
@@ -99,16 +112,157 @@
         </div>
     </div>
 </div>
+
+<!-- Search History -->
+<div class="row mt-4">
+    <div class="col">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-clock-history"></i> {{ _("searches.search_history") }}</span>
+                <span class="badge bg-secondary" id="history-count">0</span>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>{{ _("searches.keywords") }}</th>
+                                <th>{{ _("searches.status") }}</th>
+                                <th>{{ _("searches.seeds_found") }}</th>
+                                <th>{{ _("searches.credits_used") }}</th>
+                                <th>{{ _("common.created_at") }}</th>
+                                <th>{{ _("common.actions") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <tr>
+                                <td colspan="7" class="text-center py-4">{{ _("common.loading") }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
+// Load search history on page load
+document.addEventListener('DOMContentLoaded', loadSearchHistory);
+
+async function loadSearchHistory() {
+    try {
+        const response = await fetch('/api/searches/?page=1&page_size=10');
+        if (!response.ok) throw new Error('Failed to load history');
+
+        const searches = await response.json();
+        renderSearchHistory(searches);
+    } catch (error) {
+        console.error('Error loading search history:', error);
+        document.getElementById('history-table-body').innerHTML =
+            `<tr><td colspan="7" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderSearchHistory(searches) {
+    const tbody = document.getElementById('history-table-body');
+    document.getElementById('history-count').textContent = searches.length;
+
+    if (searches.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${t('searches.no_searches')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = searches.map(search => {
+        const statusBadge = getStatusBadge(search.status);
+        const createdAt = new Date(search.created_at).toLocaleString();
+        const keywords = search.keywords.length > 50
+            ? search.keywords.substring(0, 50) + '...'
+            : search.keywords;
+
+        const canCancel = search.status === 'pending' || search.status === 'running';
+        return `
+            <tr>
+                <td>${search.id}</td>
+                <td title="${search.keywords}">${keywords}</td>
+                <td>${statusBadge}</td>
+                <td>${search.seeds_found}</td>
+                <td>${search.credits_used}</td>
+                <td>${createdAt}</td>
+                <td>
+                    <a href="/searches/${search.id}" class="btn btn-sm btn-outline-primary" title="${t('common.view')}">
+                        <i class="bi bi-eye"></i>
+                    </a>
+                    ${canCancel ? `
+                    <button class="btn btn-sm btn-outline-danger" onclick="cancelSearch(${search.id}, ${search.credits_used})" title="${t('searches.cancel')}">
+                        <i class="bi bi-x-circle"></i>
+                    </button>
+                    ` : ''}
+                    ${search.status === 'completed' ? `
+                    <button class="btn btn-sm btn-outline-success" onclick="exportSearch(${search.id})" title="${t('common.export')}">
+                        <i class="bi bi-download"></i>
+                    </button>
+                    ` : ''}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'pending': `<span class="badge bg-secondary">${t('status.pending')}</span>`,
+        'running': `<span class="badge bg-primary"><span class="spinner-border spinner-border-sm me-1"></span>${t('status.running')}</span>`,
+        'completed': `<span class="badge bg-success">${t('status.completed')}</span>`,
+        'failed': `<span class="badge bg-danger">${t('status.failed')}</span>`
+    };
+    return badges[status] || status;
+}
+
+function exportSearch(searchId) {
+    window.open(`/api/searches/${searchId}/export?format=csv`, '_blank');
+}
+
+async function cancelSearch(searchId, creditsUsed) {
+    const confirmMsg = t('searches.confirm_cancel').replace('{credits}', creditsUsed);
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/searches/${searchId}/cancel`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            // Reload history and update credits display
+            loadSearchHistory();
+            // Refresh credits display
+            const meResponse = await fetch('/api/auth/me');
+            if (meResponse.ok) {
+                const user = await meResponse.json();
+                document.getElementById('current-credits').textContent = user.credits;
+            }
+            alert(t('searches.cancelled_refunded').replace('{credits}', creditsUsed));
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
 async function estimateCost() {
     const keywords = document.getElementById('keywords').value;
     const industry = document.getElementById('industry').value;
+    const crawl_depth = parseInt(document.getElementById('crawl-depth').value);
 
     if (!keywords.trim()) {
-        alert('Please enter search keywords');
+        alert(t('searches.keywords'));
         return;
     }
 
@@ -116,22 +270,22 @@ async function estimateCost() {
         const response = await fetch('/api/searches/estimate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keywords, industry })
+            body: JSON.stringify({ keywords, industry, crawl_depth })
         });
 
         if (response.ok) {
             const estimate = await response.json();
             document.getElementById('estimate-info').innerHTML = `
-                <i class="bi bi-calculator"></i> <strong>Estimated Cost: ${estimate.estimated_credits} credits</strong>
+                <i class="bi bi-calculator"></i> <strong>${t('searches.estimated_credits')}: ${estimate.estimated_credits}</strong>
                 <ul class="mb-0 mt-2">
-                    <li>Seed search: ${estimate.breakdown.seed_search} credits</li>
-                    <li>Crawling: ${estimate.breakdown.crawling} credits</li>
-                    <li>AI audit: ${estimate.breakdown.ai_audit} credits</li>
+                    <li>Seed search: ${estimate.breakdown.seed_search}</li>
+                    <li>Crawling: ${estimate.breakdown.crawling}</li>
+                    <li>AI audit: ${estimate.breakdown.ai_audit}</li>
                 </ul>
             `;
         }
     } catch (error) {
-        alert('Error estimating cost');
+        alert(t('common.error'));
     }
 }
 
@@ -140,28 +294,27 @@ async function submitSearch(event) {
 
     const keywords = document.getElementById('keywords').value;
     const industry = document.getElementById('industry').value;
+    const crawl_depth = parseInt(document.getElementById('crawl-depth').value);
     const submitBtn = document.getElementById('submit-btn');
 
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
+    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${t('common.loading')}`;
 
     try {
-        // Create search
         const response = await fetch('/api/searches/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keywords, industry })
+            body: JSON.stringify({ keywords, industry, crawl_depth })
         });
 
         if (!response.ok) {
             const error = await response.json();
-            alert(error.detail || 'Failed to create search');
+            alert(error.detail || t('common.operation_failed'));
             return false;
         }
 
         const search = await response.json();
 
-        // Start the search
         const startResponse = await fetch(`/api/searches/${search.id}/start`, {
             method: 'POST'
         });
@@ -170,13 +323,13 @@ async function submitSearch(event) {
             window.location.href = `/searches/${search.id}`;
         } else {
             const error = await startResponse.json();
-            alert(error.detail || 'Failed to start search');
+            alert(error.detail || t('common.operation_failed'));
         }
     } catch (error) {
-        alert('Error creating search');
+        alert(t('common.error'));
     } finally {
         submitBtn.disabled = false;
-        submitBtn.innerHTML = '<i class="bi bi-search"></i> Start Search';
+        submitBtn.innerHTML = `<i class="bi bi-search"></i> ${t('searches.start_search')}`;
     }
 
     return false;

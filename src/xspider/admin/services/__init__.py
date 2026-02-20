@@ -1,6 +1,8 @@
 """Admin services package."""
 
 from xspider.admin.services.account_monitor import AccountMonitorService
+from xspider.admin.services.account_pool import AccountPool, AccountState, concurrent_search, SearchStats
+from xspider.admin.services.account_stats_service import AccountStatsService
 from xspider.admin.services.audience_overlap import AudienceOverlapService
 from xspider.admin.services.authenticity_analyzer import AuthenticityAnalyzer
 from xspider.admin.services.commenter_scraper import CommenterScraperService
@@ -26,6 +28,9 @@ from xspider.admin.services.targeted_comment_service import TargetedCommentServi
 
 __all__ = [
     "AccountMonitorService",
+    "AccountPool",
+    "AccountState",
+    "AccountStatsService",
     "AudienceOverlapService",
     "AuthenticityAnalyzer",
     "CommenterScraperService",

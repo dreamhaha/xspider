@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Profile - xspider{% endblock %}
+{% block title %}{{ _("profile.title") }} - xspider{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
-        <h2><i class="bi bi-person"></i> Profile</h2>
-        <p class="text-muted">Manage your account settings</p>
+        <h2><i class="bi bi-person"></i> {{ _("profile.title") }}</h2>
+        <p class="text-muted">{{ _("profile.description") }}</p>
     </div>
 </div>
 
@@ -15,36 +15,36 @@
         <!-- Profile Info -->
         <div class="card mb-4">
             <div class="card-header">
-                <i class="bi bi-person-circle"></i> Account Information
+                <i class="bi bi-person-circle"></i> {{ _("profile.account_info") }}
             </div>
             <div class="card-body">
                 <div class="mb-3">
-                    <label class="form-label text-muted">Username</label>
+                    <label class="form-label text-muted">{{ _("profile.username") }}</label>
                     <p class="form-control-plaintext"><strong id="profile-username">{{ user.username }}</strong></p>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label text-muted">Email</label>
-                    <p class="form-control-plaintext" id="profile-email">Loading...</p>
+                    <label class="form-label text-muted">{{ _("profile.email") }}</label>
+                    <p class="form-control-plaintext" id="profile-email">{{ _("common.loading") }}</p>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label text-muted">Role</label>
+                    <label class="form-label text-muted">{{ _("profile.role") }}</label>
                     <p class="form-control-plaintext" id="profile-role">
                         {% if user.role.value == 'admin' %}
-                        <span class="badge bg-danger">Admin</span>
+                        <span class="badge bg-danger">{{ _("users.admin") }}</span>
                         {% else %}
-                        <span class="badge bg-primary">User</span>
+                        <span class="badge bg-primary">{{ _("users.user") }}</span>
                         {% endif %}
                     </p>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label text-muted">Credits Balance</label>
+                    <label class="form-label text-muted">{{ _("credits.current_balance") }}</label>
                     <p class="form-control-plaintext">
                         <span class="badge bg-warning text-dark fs-5" id="profile-credits">{{ user.credits }}</span>
                     </p>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label text-muted">Member Since</label>
-                    <p class="form-control-plaintext" id="profile-created">Loading...</p>
+                    <label class="form-label text-muted">{{ _("profile.member_since") }}</label>
+                    <p class="form-control-plaintext" id="profile-created">{{ _("common.loading") }}</p>
                 </div>
             </div>
         </div>
@@ -52,25 +52,24 @@
         <!-- Change Password -->
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-key"></i> Change Password
+                <i class="bi bi-key"></i> {{ _("profile.change_password") }}
             </div>
             <div class="card-body">
                 <form onsubmit="return changePassword(event)">
                     <div class="mb-3">
-                        <label class="form-label">Current Password</label>
+                        <label class="form-label">{{ _("profile.current_password") }}</label>
                         <input type="password" class="form-control" id="current-password" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">New Password</label>
+                        <label class="form-label">{{ _("profile.new_password") }}</label>
                         <input type="password" class="form-control" id="new-password" required minlength="6">
-                        <small class="text-muted">Minimum 6 characters</small>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Confirm New Password</label>
+                        <label class="form-label">{{ _("profile.confirm_password") }}</label>
                         <input type="password" class="form-control" id="confirm-password" required>
                     </div>
                     <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-check-lg"></i> Update Password
+                        <i class="bi bi-check-lg"></i> {{ _("profile.update_password") }}
                     </button>
                 </form>
             </div>
@@ -81,21 +80,21 @@
         <!-- Usage Stats -->
         <div class="card mb-4">
             <div class="card-header">
-                <i class="bi bi-bar-chart"></i> Usage Statistics
+                <i class="bi bi-bar-chart"></i> {{ _("searches.title") }}
             </div>
             <div class="card-body">
                 <div class="row text-center">
                     <div class="col-4">
                         <h3 id="stat-searches">-</h3>
-                        <small class="text-muted">Total Searches</small>
+                        <small class="text-muted">{{ _("searches.title") }}</small>
                     </div>
                     <div class="col-4">
                         <h3 id="stat-influencers">-</h3>
-                        <small class="text-muted">Influencers Found</small>
+                        <small class="text-muted">{{ _("searches.influencers_found") }}</small>
                     </div>
                     <div class="col-4">
                         <h3 id="stat-credits-used">-</h3>
-                        <small class="text-muted">Credits Used</small>
+                        <small class="text-muted">{{ _("searches.credits_used") }}</small>
                     </div>
                 </div>
             </div>
@@ -104,15 +103,15 @@
         <!-- Recent Searches -->
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-clock-history"></i> Recent Searches
+                <i class="bi bi-clock-history"></i> {{ _("searches.search_history") }}
             </div>
             <div class="card-body p-0">
                 <ul class="list-group list-group-flush" id="recent-searches-list">
-                    <li class="list-group-item text-center text-muted">Loading...</li>
+                    <li class="list-group-item text-center text-muted">{{ _("common.loading") }}</li>
                 </ul>
             </div>
             <div class="card-footer text-center">
-                <a href="/searches" class="text-decoration-none">View All Searches</a>
+                <a href="/searches" class="text-decoration-none">{{ _("searches.view_results") }}</a>
             </div>
         </div>
     </div>
@@ -152,14 +151,12 @@ async function loadStats() {
             const searches = await searchesRes.json();
             document.getElementById('stat-searches').textContent = searches.length;
 
-            // Calculate total influencers
             const totalInfluencers = searches.reduce((sum, s) => sum + (s.seeds_found || 0), 0);
             document.getElementById('stat-influencers').textContent = totalInfluencers;
 
-            // Render recent searches
             const list = document.getElementById('recent-searches-list');
             if (searches.length === 0) {
-                list.innerHTML = '<li class="list-group-item text-center text-muted">No searches yet</li>';
+                list.innerHTML = `<li class="list-group-item text-center text-muted">${t('searches.no_searches')}</li>`;
             } else {
                 list.innerHTML = searches.map(s => `
                     <li class="list-group-item d-flex justify-content-between align-items-center">
@@ -182,10 +179,10 @@ async function loadStats() {
 
 function getStatusBadge(status) {
     const badges = {
-        'pending': '<span class="badge bg-secondary">Pending</span>',
-        'running': '<span class="badge bg-primary">Running</span>',
-        'completed': '<span class="badge bg-success">Completed</span>',
-        'failed': '<span class="badge bg-danger">Failed</span>'
+        'pending': `<span class="badge bg-secondary">${t('status.pending')}</span>`,
+        'running': `<span class="badge bg-primary">${t('status.running')}</span>`,
+        'completed': `<span class="badge bg-success">${t('status.completed')}</span>`,
+        'failed': `<span class="badge bg-danger">${t('status.failed')}</span>`
     };
     return badges[status] || status;
 }
@@ -198,7 +195,7 @@ async function changePassword(event) {
     const confirmPassword = document.getElementById('confirm-password').value;
 
     if (newPassword !== confirmPassword) {
-        alert('New passwords do not match');
+        alert(t('profile.password_mismatch'));
         return false;
     }
 
@@ -213,16 +210,16 @@ async function changePassword(event) {
         });
 
         if (response.ok) {
-            alert('Password changed successfully');
+            alert(t('auth.password_changed'));
             document.getElementById('current-password').value = '';
             document.getElementById('new-password').value = '';
             document.getElementById('confirm-password').value = '';
         } else {
             const error = await response.json();
-            alert(error.detail || 'Failed to change password');
+            alert(error.detail || t('common.operation_failed'));
         }
     } catch (error) {
-        alert('Error changing password');
+        alert(t('common.error'));
     }
 
     return false;

@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - xspider Admin{% endblock %}
+{% block title %}{{ _("dashboard.title") }} - xspider Admin{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
-        <h2><i class="bi bi-speedometer2"></i> Dashboard</h2>
-        <p class="text-muted">Overview of system status and statistics</p>
+        <h2><i class="bi bi-speedometer2"></i> {{ _("dashboard.title") }}</h2>
+        <p class="text-muted">{{ _("dashboard.overview") }}</p>
     </div>
 </div>
 
@@ -17,14 +17,14 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <h6 class="card-title">Twitter Accounts</h6>
+                        <h6 class="card-title">{{ _("dashboard.twitter_accounts") }}</h6>
                         <h2 class="mb-0" id="stat-total-accounts">-</h2>
                     </div>
                     <div class="display-4 opacity-50">
                         <i class="bi bi-twitter"></i>
                     </div>
                 </div>
-                <small><span id="stat-active-accounts">-</span> active</small>
+                <small><span id="stat-active-accounts">-</span> {{ _("dashboard.active") }}</small>
             </div>
         </div>
     </div>
@@ -33,14 +33,14 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <h6 class="card-title">Proxies</h6>
+                        <h6 class="card-title">{{ _("dashboard.proxies") }}</h6>
                         <h2 class="mb-0" id="stat-total-proxies">-</h2>
                     </div>
                     <div class="display-4 opacity-50">
                         <i class="bi bi-hdd-network"></i>
                     </div>
                 </div>
-                <small><span id="stat-active-proxies">-</span> active</small>
+                <small><span id="stat-active-proxies">-</span> {{ _("dashboard.active") }}</small>
             </div>
         </div>
     </div>
@@ -49,14 +49,14 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <h6 class="card-title">Users</h6>
+                        <h6 class="card-title">{{ _("dashboard.users") }}</h6>
                         <h2 class="mb-0" id="stat-total-users">-</h2>
                     </div>
                     <div class="display-4 opacity-50">
                         <i class="bi bi-people"></i>
                     </div>
                 </div>
-                <small><span id="stat-active-users-today">-</span> active today</small>
+                <small><span id="stat-active-users-today">-</span> {{ _("dashboard.active_today") }}</small>
             </div>
         </div>
     </div>
@@ -65,14 +65,14 @@
             <div class="card-body">
                 <div class="d-flex justify-content-between">
                     <div>
-                        <h6 class="card-title">Searches Today</h6>
+                        <h6 class="card-title">{{ _("dashboard.searches_today") }}</h6>
                         <h2 class="mb-0" id="stat-searches-today">-</h2>
                     </div>
                     <div class="display-4 opacity-50">
                         <i class="bi bi-search"></i>
                     </div>
                 </div>
-                <small><span id="stat-searches-running">-</span> running</small>
+                <small><span id="stat-searches-running">-</span> {{ _("dashboard.running") }}</small>
             </div>
         </div>
     </div>
@@ -81,13 +81,13 @@
 <!-- Monitoring Stats Cards -->
 <div class="row mb-4">
     <div class="col-12 mb-2">
-        <h5><i class="bi bi-broadcast"></i> Influencer Monitoring</h5>
+        <h5><i class="bi bi-broadcast"></i> {{ _("dashboard.influencer_monitoring") }}</h5>
     </div>
     <div class="col-md-2 mb-3">
         <div class="card border-primary h-100">
             <div class="card-body text-center">
                 <h3 class="mb-0 text-primary" id="stat-active-monitors">-</h3>
-                <small class="text-muted">Active Monitors</small>
+                <small class="text-muted">{{ _("dashboard.active_monitors") }}</small>
             </div>
         </div>
     </div>
@@ -95,7 +95,7 @@
         <div class="card border-success h-100">
             <div class="card-body text-center">
                 <h3 class="mb-0 text-success" id="stat-tweets-collected">-</h3>
-                <small class="text-muted">Tweets Collected</small>
+                <small class="text-muted">{{ _("dashboard.tweets_collected") }}</small>
             </div>
         </div>
     </div>
@@ -103,7 +103,7 @@
         <div class="card border-info h-100">
             <div class="card-body text-center">
                 <h3 class="mb-0 text-info" id="stat-commenters-analyzed">-</h3>
-                <small class="text-muted">Commenters Analyzed</small>
+                <small class="text-muted">{{ _("dashboard.commenters_analyzed") }}</small>
             </div>
         </div>
     </div>
@@ -111,7 +111,7 @@
         <div class="card border-success h-100">
             <div class="card-body text-center">
                 <h3 class="mb-0 text-success" id="stat-real-users">-</h3>
-                <small class="text-muted">Real Users</small>
+                <small class="text-muted">{{ _("dashboard.real_users") }}</small>
             </div>
         </div>
     </div>
@@ -119,7 +119,7 @@
         <div class="card border-danger h-100">
             <div class="card-body text-center">
                 <h3 class="mb-0 text-danger" id="stat-bots-detected">-</h3>
-                <small class="text-muted">Bots Detected</small>
+                <small class="text-muted">{{ _("dashboard.bots_detected") }}</small>
             </div>
         </div>
     </div>
@@ -127,7 +127,7 @@
         <div class="card border-warning h-100">
             <div class="card-body text-center">
                 <h3 class="mb-0 text-warning" id="stat-dm-available">-</h3>
-                <small class="text-muted">DM Available</small>
+                <small class="text-muted">{{ _("dashboard.dm_available") }}</small>
             </div>
         </div>
     </div>
@@ -138,7 +138,7 @@
     <div class="col-md-6 mb-4">
         <div class="card h-100">
             <div class="card-header">
-                <i class="bi bi-pie-chart"></i> Account Status Distribution
+                <i class="bi bi-pie-chart"></i> {{ _("dashboard.account_status_distribution") }}
             </div>
             <div class="card-body">
                 <canvas id="account-status-chart"></canvas>
@@ -148,7 +148,7 @@
     <div class="col-md-6 mb-4">
         <div class="card h-100">
             <div class="card-header">
-                <i class="bi bi-bar-chart"></i> Daily Search Activity (7 Days)
+                <i class="bi bi-bar-chart"></i> {{ _("dashboard.daily_search_activity") }}
             </div>
             <div class="card-body">
                 <canvas id="daily-search-chart"></canvas>
@@ -162,11 +162,11 @@
     <div class="col-md-6 mb-4">
         <div class="card h-100">
             <div class="card-header">
-                <i class="bi bi-activity"></i> Recent Activity
+                <i class="bi bi-activity"></i> {{ _("dashboard.recent_activity") }}
             </div>
             <div class="card-body p-0">
                 <ul class="list-group list-group-flush" id="recent-activity-list">
-                    <li class="list-group-item text-center text-muted">Loading...</li>
+                    <li class="list-group-item text-center text-muted">{{ _("common.loading") }}</li>
                 </ul>
             </div>
         </div>
@@ -176,25 +176,25 @@
     <div class="col-md-6 mb-4">
         <div class="card h-100">
             <div class="card-header">
-                <i class="bi bi-lightning"></i> Quick Actions
+                <i class="bi bi-lightning"></i> {{ _("dashboard.quick_actions") }}
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
                     <a href="/search" class="btn btn-primary">
-                        <i class="bi bi-search"></i> New Search
+                        <i class="bi bi-search"></i> {{ _("dashboard.new_search") }}
                     </a>
                     <a href="/admin/monitors" class="btn btn-outline-success">
-                        <i class="bi bi-broadcast"></i> Monitor Influencers
+                        <i class="bi bi-broadcast"></i> {{ _("dashboard.monitor_influencers") }}
                     </a>
                     {% if user.role.value == 'admin' %}
                     <a href="/admin/accounts" class="btn btn-outline-primary">
-                        <i class="bi bi-twitter"></i> Manage Accounts
+                        <i class="bi bi-twitter"></i> {{ _("dashboard.manage_accounts") }}
                     </a>
                     <button class="btn btn-outline-secondary" onclick="checkAllAccounts()">
-                        <i class="bi bi-check-circle"></i> Check All Accounts
+                        <i class="bi bi-check-circle"></i> {{ _("dashboard.check_all_accounts") }}
                     </button>
                     <button class="btn btn-outline-secondary" onclick="checkAllProxies()">
-                        <i class="bi bi-hdd-network"></i> Check All Proxies
+                        <i class="bi bi-hdd-network"></i> {{ _("dashboard.check_all_proxies") }}
                     </button>
                     {% endif %}
                 </div>
@@ -263,7 +263,13 @@ async function loadAccountDistribution() {
         accountStatusChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
-                labels: ['Active', 'Rate Limited', 'Banned', 'Needs Verify', 'Error'],
+                labels: [
+                    t('status.active'),
+                    t('status.rate_limited'),
+                    t('status.banned'),
+                    t('status.needs_verify'),
+                    t('status.error')
+                ],
                 datasets: [{
                     data: [data.active, data.rate_limited, data.banned, data.needs_verify, data.error],
                     backgroundColor: ['#198754', '#ffc107', '#dc3545', '#fd7e14', '#6c757d']
@@ -301,11 +307,11 @@ async function loadDailySearchStats() {
             data: {
                 labels: data.map(d => d.date),
                 datasets: [{
-                    label: 'Searches',
+                    label: t('searches.title'),
                     data: data.map(d => d.searches),
                     backgroundColor: '#0d6efd'
                 }, {
-                    label: 'Credits Used',
+                    label: t('searches.credits_used'),
                     data: data.map(d => d.credits_used),
                     backgroundColor: '#ffc107',
                     yAxisID: 'y1'
@@ -342,7 +348,7 @@ async function loadRecentActivity() {
         const list = document.getElementById('recent-activity-list');
 
         if (activities.length === 0) {
-            list.innerHTML = '<li class="list-group-item text-center text-muted">No recent activity</li>';
+            list.innerHTML = `<li class="list-group-item text-center text-muted">${t('dashboard.no_recent_activity')}</li>`;
             return;
         }
 
@@ -371,38 +377,38 @@ async function loadRecentActivity() {
 function formatTimeAgo(date) {
     const seconds = Math.floor((new Date() - date) / 1000);
 
-    if (seconds < 60) return 'just now';
-    if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
-    if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
-    return Math.floor(seconds / 86400) + 'd ago';
+    if (seconds < 60) return t('time.just_now');
+    if (seconds < 3600) return t('time.minutes_ago').replace('{n}', Math.floor(seconds / 60));
+    if (seconds < 86400) return t('time.hours_ago').replace('{n}', Math.floor(seconds / 3600));
+    return t('time.days_ago').replace('{n}', Math.floor(seconds / 86400));
 }
 
 async function checkAllAccounts() {
-    if (!confirm('Check all Twitter accounts? This may take a while.')) return;
+    if (!confirm(t('dashboard.confirm_check_accounts'))) return;
 
     try {
         const response = await fetch('/api/accounts/check-all', { method: 'POST' });
         if (response.ok) {
-            alert('Account check completed. Refresh to see results.');
+            alert(t('dashboard.check_completed'));
             loadDashboardStats();
             loadAccountDistribution();
         }
     } catch (error) {
-        alert('Error checking accounts');
+        alert(t('common.error'));
     }
 }
 
 async function checkAllProxies() {
-    if (!confirm('Check all proxies? This may take a while.')) return;
+    if (!confirm(t('dashboard.confirm_check_proxies'))) return;
 
     try {
         const response = await fetch('/api/proxies/check-all', { method: 'POST' });
         if (response.ok) {
-            alert('Proxy check completed. Refresh to see results.');
+            alert(t('dashboard.check_completed'));
             loadDashboardStats();
         }
     } catch (error) {
-        alert('Error checking proxies');
+        alert(t('common.error'));
     }
 }
 

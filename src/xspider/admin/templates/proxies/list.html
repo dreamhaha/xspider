@@ -1,22 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Proxies - xspider Admin{% endblock %}
+{% block title %}{{ _("proxies.title") }} - xspider Admin{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
-        <h2><i class="bi bi-hdd-network"></i> Proxy Servers</h2>
-        <p class="text-muted">Manage proxy servers for scraping</p>
+        <h2><i class="bi bi-hdd-network"></i> {{ _("proxies.title") }}</h2>
+        <p class="text-muted">{{ _("proxies.description") }}</p>
     </div>
     <div class="col-auto">
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProxyModal">
-            <i class="bi bi-plus-lg"></i> Add Proxy
+            <i class="bi bi-plus-lg"></i> {{ _("proxies.add_proxy") }}
         </button>
         <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#importModal">
-            <i class="bi bi-upload"></i> Import
+            <i class="bi bi-upload"></i> {{ _("common.import") }}
         </button>
         <button class="btn btn-outline-secondary" onclick="checkAllProxies()">
-            <i class="bi bi-check-circle"></i> Check All
+            <i class="bi bi-check-circle"></i> {{ _("proxies.check_all") }}
         </button>
     </div>
 </div>
@@ -25,10 +25,10 @@
 <div class="row mb-3">
     <div class="col-md-3">
         <select class="form-select" id="status-filter" onchange="loadProxies()">
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="error">Error</option>
+            <option value="">{{ _("proxies.all_status") }}</option>
+            <option value="active">{{ _("proxies.active") }}</option>
+            <option value="inactive">{{ _("proxies.inactive") }}</option>
+            <option value="error">{{ _("proxies.error") }}</option>
         </select>
     </div>
 </div>
@@ -40,20 +40,20 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>URL</th>
-                        <th>Protocol</th>
-                        <th>Status</th>
-                        <th>Response Time</th>
-                        <th>Success Rate</th>
-                        <th>Last Check</th>
-                        <th>Actions</th>
+                        <th>{{ _("proxies.id") }}</th>
+                        <th>{{ _("proxies.name") }}</th>
+                        <th>{{ _("proxies.url") }}</th>
+                        <th>{{ _("proxies.protocol") }}</th>
+                        <th>{{ _("proxies.status") }}</th>
+                        <th>{{ _("proxies.response_time") }}</th>
+                        <th>{{ _("proxies.success_rate") }}</th>
+                        <th>{{ _("proxies.last_check") }}</th>
+                        <th>{{ _("common.actions") }}</th>
                     </tr>
                 </thead>
                 <tbody id="proxies-table-body">
                     <tr>
-                        <td colspan="9" class="text-center py-4">Loading...</td>
+                        <td colspan="9" class="text-center py-4">{{ _("common.loading") }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -66,22 +66,22 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Add Proxy</h5>
+                <h5 class="modal-title">{{ _("proxies.add_proxy") }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form onsubmit="return addProxy(event)">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Name (optional)</label>
-                        <input type="text" class="form-control" id="proxy-name" placeholder="Proxy nickname">
+                        <label class="form-label">{{ _("proxies.name") }} ({{ _("common.optional") }})</label>
+                        <input type="text" class="form-control" id="proxy-name" placeholder="{{ _('common.name') }}">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Proxy URL</label>
+                        <label class="form-label">{{ _("proxies.proxy_url") }}</label>
                         <input type="text" class="form-control" id="proxy-url" required
-                            placeholder="http://user:pass@host:port">
+                            placeholder="{{ _('proxies.proxy_url_placeholder') }}">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Protocol</label>
+                        <label class="form-label">{{ _("proxies.protocol") }}</label>
                         <select class="form-select" id="proxy-protocol">
                             <option value="http">HTTP</option>
                             <option value="https">HTTPS</option>
@@ -90,8 +90,8 @@
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Add Proxy</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("proxies.add_proxy") }}</button>
                 </div>
             </form>
         </div>
@@ -103,28 +103,28 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">Import Proxies</h5>
+                <h5 class="modal-title">{{ _("proxies.import_proxies") }}</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <form onsubmit="return importProxies(event)">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Proxy URLs (one per line)</label>
+                        <label class="form-label">{{ _("proxies.urls_one_per_line") }}</label>
                         <textarea class="form-control" id="import-urls" rows="10" required
                             placeholder="http://user:pass@host:port&#10;socks5://host:port"></textarea>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Default Protocol</label>
+                        <label class="form-label">{{ _("proxies.protocol") }}</label>
                         <select class="form-select" id="import-protocol">
-                            <option value="http">HTTP (auto-detect from URL)</option>
+                            <option value="http">HTTP</option>
                             <option value="https">HTTPS</option>
                             <option value="socks5">SOCKS5</option>
                         </select>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Import</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("common.import") }}</button>
                 </div>
             </form>
         </div>
@@ -147,7 +147,7 @@ async function loadProxies() {
     } catch (error) {
         console.error('Error loading proxies:', error);
         document.getElementById('proxies-table-body').innerHTML =
-            '<tr><td colspan="9" class="text-center text-danger">Error loading proxies</td></tr>';
+            `<tr><td colspan="9" class="text-center text-danger">${t('common.error')}</td></tr>`;
     }
 }
 
@@ -155,7 +155,7 @@ function renderProxies(proxies) {
     const tbody = document.getElementById('proxies-table-body');
 
     if (proxies.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No proxies found</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${t('proxies.no_proxies')}</td></tr>`;
         return;
     }
 
@@ -163,7 +163,7 @@ function renderProxies(proxies) {
         const statusBadge = getStatusBadge(proxy.status);
         const responseTime = proxy.response_time ? `${proxy.response_time.toFixed(0)}ms` : '-';
         const successRate = `${proxy.success_rate.toFixed(1)}%`;
-        const lastCheck = proxy.last_check_at ? formatDate(proxy.last_check_at) : 'Never';
+        const lastCheck = proxy.last_check_at ? formatDate(proxy.last_check_at) : t('common.never');
 
         return `
             <tr>
@@ -177,13 +177,13 @@ function renderProxies(proxies) {
                 <td>${lastCheck}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
-                        <button class="btn btn-outline-primary" onclick="checkProxy(${proxy.id})" title="Check">
+                        <button class="btn btn-outline-primary" onclick="checkProxy(${proxy.id})" title="${t('accounts.check')}">
                             <i class="bi bi-check-circle"></i>
                         </button>
-                        <button class="btn btn-outline-secondary" onclick="resetStats(${proxy.id})" title="Reset">
+                        <button class="btn btn-outline-secondary" onclick="resetStats(${proxy.id})" title="${t('accounts.reset')}">
                             <i class="bi bi-arrow-counterclockwise"></i>
                         </button>
-                        <button class="btn btn-outline-danger" onclick="deleteProxy(${proxy.id})" title="Delete">
+                        <button class="btn btn-outline-danger" onclick="deleteProxy(${proxy.id})" title="${t('common.delete')}">
                             <i class="bi bi-trash"></i>
                         </button>
                     </div>
@@ -195,15 +195,14 @@ function renderProxies(proxies) {
 
 function getStatusBadge(status) {
     const badges = {
-        'active': '<span class="badge bg-success">Active</span>',
-        'inactive': '<span class="badge bg-warning">Inactive</span>',
-        'error': '<span class="badge bg-danger">Error</span>'
+        'active': `<span class="badge bg-success">${t('status.active')}</span>`,
+        'inactive': `<span class="badge bg-warning">${t('status.inactive')}</span>`,
+        'error': `<span class="badge bg-danger">${t('status.error')}</span>`
     };
     return badges[status] || status;
 }
 
 function maskUrl(url) {
-    // Mask password in URL
     return url.replace(/:([^@]+)@/, ':****@');
 }
 
@@ -232,10 +231,10 @@ async function addProxy(event) {
             loadProxies();
         } else {
             const error = await response.json();
-            alert(error.detail || 'Failed to add proxy');
+            alert(error.detail || t('common.operation_failed'));
         }
     } catch (error) {
-        alert('Error adding proxy');
+        alert(t('common.error'));
     }
 
     return false;
@@ -258,14 +257,14 @@ async function importProxies(event) {
         if (response.ok) {
             const imported = await response.json();
             bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
-            alert(`Successfully imported ${imported.length} proxies`);
+            alert(t('common.operation_success'));
             loadProxies();
         } else {
             const error = await response.json();
-            alert(error.detail || 'Failed to import proxies');
+            alert(error.detail || t('common.operation_failed'));
         }
     } catch (error) {
-        alert('Error importing proxies');
+        alert(t('common.error'));
     }
 
     return false;
@@ -277,32 +276,32 @@ async function checkProxy(proxyId) {
         if (response.ok) {
             const result = await response.json();
             const msg = result.response_time
-                ? `Status: ${result.status}\nResponse time: ${result.response_time.toFixed(0)}ms`
-                : `Status: ${result.status}\n${result.error_message || ''}`;
+                ? `${t('common.status')}: ${result.status}\n${t('proxies.response_time')}: ${result.response_time.toFixed(0)}ms`
+                : `${t('common.status')}: ${result.status}\n${result.error_message || ''}`;
             alert(msg);
             loadProxies();
         }
     } catch (error) {
-        alert('Error checking proxy');
+        alert(t('common.error'));
     }
 }
 
 async function checkAllProxies() {
-    if (!confirm('Check all proxies? This may take a while.')) return;
+    if (!confirm(t('proxies.confirm_check_all'))) return;
 
     try {
         const response = await fetch('/api/proxies/check-all', { method: 'POST' });
         if (response.ok) {
-            alert('All proxies checked');
+            alert(t('common.operation_success'));
             loadProxies();
         }
     } catch (error) {
-        alert('Error checking proxies');
+        alert(t('common.error'));
     }
 }
 
 async function resetStats(proxyId) {
-    if (!confirm('Reset stats for this proxy?')) return;
+    if (!confirm(t('accounts.confirm_reset'))) return;
 
     try {
         const response = await fetch(`/api/proxies/${proxyId}/reset-stats`, { method: 'POST' });
@@ -310,12 +309,12 @@ async function resetStats(proxyId) {
             loadProxies();
         }
     } catch (error) {
-        alert('Error resetting stats');
+        alert(t('common.error'));
     }
 }
 
 async function deleteProxy(proxyId) {
-    if (!confirm('Delete this proxy?')) return;
+    if (!confirm(t('proxies.confirm_delete'))) return;
 
     try {
         const response = await fetch(`/api/proxies/${proxyId}`, { method: 'DELETE' });
@@ -323,7 +322,7 @@ async function deleteProxy(proxyId) {
             loadProxies();
         }
     } catch (error) {
-        alert('Error deleting proxy');
+        alert(t('common.error'));
     }
 }
 

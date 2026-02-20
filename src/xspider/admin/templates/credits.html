@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Credits - xspider{% endblock %}
+{% block title %}{{ _("credits.title") }} - xspider{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
-        <h2><i class="bi bi-coin"></i> Credits</h2>
-        <p class="text-muted">View your credit balance and transaction history</p>
+        <h2><i class="bi bi-coin"></i> {{ _("credits.title") }}</h2>
+        <p class="text-muted">{{ _("credits.description") }}</p>
     </div>
 </div>
 
@@ -15,9 +15,9 @@
     <div class="col-md-4 mb-4">
         <div class="card bg-primary text-white h-100">
             <div class="card-body text-center">
-                <h6>Current Balance</h6>
+                <h6>{{ _("credits.current_balance") }}</h6>
                 <h1 class="display-4" id="current-balance">-</h1>
-                <p class="mb-0">credits</p>
+                <p class="mb-0">{{ _("credits.title") }}</p>
             </div>
         </div>
     </div>
@@ -28,7 +28,7 @@
             <div class="col-6 mb-3">
                 <div class="card h-100">
                     <div class="card-body">
-                        <h6 class="text-muted">Total Recharged</h6>
+                        <h6 class="text-muted">{{ _("credits.type_recharge") }}</h6>
                         <h3 class="text-success" id="total-recharged">-</h3>
                     </div>
                 </div>
@@ -36,7 +36,7 @@
             <div class="col-6 mb-3">
                 <div class="card h-100">
                     <div class="card-body">
-                        <h6 class="text-muted">Total Spent</h6>
+                        <h6 class="text-muted">{{ _("searches.credits_used") }}</h6>
                         <h3 class="text-danger" id="total-spent">-</h3>
                     </div>
                 </div>
@@ -44,7 +44,7 @@
             <div class="col-6">
                 <div class="card h-100">
                     <div class="card-body">
-                        <h6 class="text-muted">Search Credits</h6>
+                        <h6 class="text-muted">{{ _("credits.type_search") }}</h6>
                         <h3 id="search-spent">-</h3>
                     </div>
                 </div>
@@ -52,7 +52,7 @@
             <div class="col-6">
                 <div class="card h-100">
                     <div class="card-body">
-                        <h6 class="text-muted">LLM Credits</h6>
+                        <h6 class="text-muted">{{ _("credits.type_analysis") }}</h6>
                         <h3 id="llm-spent">-</h3>
                     </div>
                 </div>
@@ -64,12 +64,12 @@
 <!-- Transaction History -->
 <div class="card">
     <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-clock-history"></i> Transaction History</span>
+        <span><i class="bi bi-clock-history"></i> {{ _("credits.transaction_history") }}</span>
         <div class="btn-group btn-group-sm">
-            <button class="btn btn-outline-secondary active" onclick="filterTransactions('')">All</button>
-            <button class="btn btn-outline-success" onclick="filterTransactions('recharge')">Recharge</button>
-            <button class="btn btn-outline-primary" onclick="filterTransactions('search')">Search</button>
-            <button class="btn btn-outline-info" onclick="filterTransactions('llm_call')">LLM</button>
+            <button class="btn btn-outline-secondary active" onclick="filterTransactions('')">{{ _("common.all") }}</button>
+            <button class="btn btn-outline-success" onclick="filterTransactions('recharge')">{{ _("credits.type_recharge") }}</button>
+            <button class="btn btn-outline-primary" onclick="filterTransactions('search')">{{ _("credits.type_search") }}</button>
+            <button class="btn btn-outline-info" onclick="filterTransactions('llm_call')">{{ _("credits.type_analysis") }}</button>
         </div>
     </div>
     <div class="card-body p-0">
@@ -77,16 +77,16 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
-                        <th>Date</th>
-                        <th>Type</th>
-                        <th>Amount</th>
-                        <th>Balance After</th>
-                        <th>Description</th>
+                        <th>{{ _("credits.date") }}</th>
+                        <th>{{ _("credits.type") }}</th>
+                        <th>{{ _("credits.amount") }}</th>
+                        <th>{{ _("credits.balance_after") }}</th>
+                        <th>{{ _("users.description") }}</th>
                     </tr>
                 </thead>
                 <tbody id="transactions-table-body">
                     <tr>
-                        <td colspan="5" class="text-center py-4">Loading...</td>
+                        <td colspan="5" class="text-center py-4">{{ _("common.loading") }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -134,21 +134,20 @@ async function loadTransactions(page = 1) {
     } catch (error) {
         console.error('Error loading transactions:', error);
         document.getElementById('transactions-table-body').innerHTML =
-            '<tr><td colspan="5" class="text-center text-danger">Error loading transactions</td></tr>';
+            `<tr><td colspan="5" class="text-center text-danger">${t('common.error')}</td></tr>`;
     }
 }
 
 function renderTransactions(transactions) {
     const tbody = document.getElementById('transactions-table-body');
 
-    // Filter if needed
     let filtered = transactions;
     if (currentFilter) {
         filtered = transactions.filter(tx => tx.type === currentFilter);
     }
 
     if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No transactions found</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${t('credits.no_transactions')}</td></tr>`;
         return;
     }
 
@@ -171,10 +170,10 @@ function renderTransactions(transactions) {
 
 function getTypeBadge(type) {
     const badges = {
-        'recharge': '<span class="badge bg-success">Recharge</span>',
-        'search': '<span class="badge bg-primary">Search</span>',
-        'llm_call': '<span class="badge bg-info">LLM</span>',
-        'refund': '<span class="badge bg-warning">Refund</span>'
+        'recharge': `<span class="badge bg-success">${t('credits.type_recharge')}</span>`,
+        'search': `<span class="badge bg-primary">${t('credits.type_search')}</span>`,
+        'llm_call': `<span class="badge bg-info">${t('credits.type_analysis')}</span>`,
+        'refund': `<span class="badge bg-warning">${t('credits.type_admin')}</span>`
     };
     return badges[type] || `<span class="badge bg-secondary">${type}</span>`;
 }
@@ -186,7 +185,6 @@ function formatDate(dateStr) {
 function filterTransactions(filter) {
     currentFilter = filter;
 
-    // Update button states
     document.querySelectorAll('.btn-group .btn').forEach(btn => {
         btn.classList.remove('active');
     });
@@ -207,7 +205,7 @@ function renderPagination(total, page, pageSize) {
     let html = '<ul class="pagination">';
 
     html += `<li class="page-item ${page === 1 ? 'disabled' : ''}">
-        <a class="page-link" href="#" onclick="loadTransactions(${page - 1})">Previous</a>
+        <a class="page-link" href="#" onclick="loadTransactions(${page - 1})">${t('common.back')}</a>
     </li>`;
 
     for (let i = 1; i <= Math.min(totalPages, 5); i++) {

@@ -182,6 +182,39 @@ class CommentStrategy(str, PyEnum):
     HUMOR_MEME = "humor_meme"  # 幽默Meme
 
 
+class AccountGroup(Base):
+    """Account group for organizing Twitter accounts."""
+
+    __tablename__ = "account_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    tags: Mapped[str | None] = mapped_column(Text)  # JSON array of tag strings
+    color: Mapped[str | None] = mapped_column(String(7))  # Hex color code #RRGGBB
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0)
+    account_count: Mapped[int] = mapped_column(Integer, default=0)  # Cached count
+    active_account_count: Mapped[int] = mapped_column(Integer, default=0)  # Cached active count
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), onupdate=func.now()
+    )
+    created_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("admin_users.id", ondelete="SET NULL")
+    )
+
+    # Relationships
+    accounts: Mapped[list["TwitterAccount"]] = relationship(
+        back_populates="group", foreign_keys="TwitterAccount.group_id"
+    )
+
+    __table_args__ = (
+        Index("idx_account_groups_name", "name"),
+        Index("idx_account_groups_is_active", "is_active"),
+    )
+
+
 class AdminUser(Base):
     """Admin/user account model."""
 
@@ -274,21 +307,38 @@ class TwitterAccount(Base):
     last_check_at: Mapped[datetime | None] = mapped_column(DateTime)
     request_count: Mapped[int] = mapped_column(Integer, default=0)
     error_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str | None] = mapped_column(String(255))
     rate_limit_reset: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     created_by: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("admin_users.id", ondelete="SET NULL")
     )
     notes: Mapped[str | None] = mapped_column(Text)
+    # Account group (nullable for backward compatibility)
+    group_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("account_groups.id", ondelete="SET NULL")
+    )
 
     # Relationships
     created_by_user: Mapped["AdminUser | None"] = relationship(
         back_populates="created_accounts", foreign_keys=[created_by]
     )
+    group: Mapped["AccountGroup | None"] = relationship(
+        back_populates="accounts", foreign_keys=[group_id]
+    )
+
+    @property
+    def group_name(self) -> str | None:
+        """Get the group name for API responses."""
+        try:
+            return self.group.name if self.group else None
+        except Exception:
+            return None
 
     __table_args__ = (
         Index("idx_twitter_accounts_status", "status"),
         Index("idx_twitter_accounts_created_by", "created_by"),
+        Index("idx_twitter_accounts_group_id", "group_id"),
     )
 
 
@@ -327,6 +377,18 @@ class ProxyServer(Base):
     )
 
 
+class SearchStage(str, PyEnum):
+    """Search progress stage enumeration."""
+
+    INITIALIZING = "initializing"  # 初始化
+    SEARCHING_SEEDS = "searching_seeds"  # 搜索种子用户
+    CRAWLING_FOLLOWERS = "crawling_followers"  # 爬取关注者
+    BUILDING_GRAPH = "building_graph"  # 构建关系图
+    CALCULATING_PAGERANK = "calculating_pagerank"  # 计算PageRank
+    AI_ANALYZING = "ai_analyzing"  # AI分析
+    FINALIZING = "finalizing"  # 完成中
+
+
 class UserSearch(Base):
     """User search task record."""
 
@@ -338,6 +400,7 @@ class UserSearch(Base):
     )
     keywords: Mapped[str] = mapped_column(Text, nullable=False)
     industry: Mapped[str | None] = mapped_column(String(100))
+    crawl_depth: Mapped[int] = mapped_column(Integer, default=0)  # 0=仅种子, 1=一层关注, 2=二层关注
     seeds_found: Mapped[int] = mapped_column(Integer, default=0)
     users_crawled: Mapped[int] = mapped_column(Integer, default=0)
     credits_used: Mapped[int] = mapped_column(Integer, default=0)
@@ -348,9 +411,18 @@ class UserSearch(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
+    # Progress tracking fields (进度跟踪字段)
+    progress_percent: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
+    progress_stage: Mapped[SearchStage | None] = mapped_column(Enum(SearchStage))
+    progress_message: Mapped[str | None] = mapped_column(String(255))
+    progress_updated_at: Mapped[datetime | None] = mapped_column(DateTime)
+
     # Relationships
     user: Mapped["AdminUser"] = relationship(back_populates="searches")
     discovered_influencers: Mapped[list["DiscoveredInfluencer"]] = relationship(
+        back_populates="search", cascade="all, delete-orphan"
+    )
+    relationships: Mapped[list["InfluencerRelationship"]] = relationship(
         back_populates="search", cascade="all, delete-orphan"
     )
     llm_usages: Mapped[list["LLMUsage"]] = relationship(
@@ -379,7 +451,10 @@ class DiscoveredInfluencer(Base):
     twitter_user_id: Mapped[str] = mapped_column(String(50), nullable=False)
     screen_name: Mapped[str] = mapped_column(String(50), nullable=False)
     name: Mapped[str | None] = mapped_column(String(100))
+    description: Mapped[str | None] = mapped_column(Text)
     followers_count: Mapped[int] = mapped_column(Integer, default=0)
+    following_count: Mapped[int] = mapped_column(Integer, default=0)
+    depth: Mapped[int] = mapped_column(Integer, default=0)  # 发现深度: 0=种子, 1=一层, 2=二层...
     pagerank_score: Mapped[float] = mapped_column(Float, default=0.0)
     hidden_score: Mapped[float] = mapped_column(Float, default=0.0)
     is_relevant: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -394,6 +469,31 @@ class DiscoveredInfluencer(Base):
         Index("idx_discovered_influencers_search_id", "search_id"),
         Index("idx_discovered_influencers_pagerank", "pagerank_score"),
         Index("idx_discovered_influencers_hidden", "hidden_score"),
+        Index("idx_discovered_influencers_depth", "depth"),
+    )
+
+
+class InfluencerRelationship(Base):
+    """Relationship between influencers (follower graph). source follows target."""
+
+    __tablename__ = "influencer_relationships"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    search_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("user_searches.id", ondelete="CASCADE"), nullable=False
+    )
+    # source_twitter_id is a follower of target_twitter_id
+    source_twitter_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_twitter_id: Mapped[str] = mapped_column(String(50), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    # Relationships
+    search: Mapped["UserSearch"] = relationship(back_populates="relationships")
+
+    __table_args__ = (
+        Index("idx_influencer_rel_search_id", "search_id"),
+        Index("idx_influencer_rel_source", "source_twitter_id"),
+        Index("idx_influencer_rel_target", "target_twitter_id"),
     )
 
 
@@ -1487,6 +1587,123 @@ class TargetedComment(Base):
         Index("idx_targeted_comments_target_tweet_id", "target_tweet_id"),
         Index("idx_targeted_comments_is_executed", "is_executed"),
         Index("idx_targeted_comments_is_matrix", "is_matrix"),
+    )
+
+
+class AccountActionType(str, PyEnum):
+    """Account action type enumeration (账号操作类型)."""
+
+    SEARCH_USER = "search_user"  # 搜索用户
+    GET_USER_INFO = "get_user_info"  # 获取用户信息
+    GET_FOLLOWERS = "get_followers"  # 获取粉丝列表
+    GET_FOLLOWING = "get_following"  # 获取关注列表
+    GET_TWEETS = "get_tweets"  # 获取推文
+    GET_REPLIES = "get_replies"  # 获取回复
+    SEND_DM = "send_dm"  # 发送私信
+    POST_TWEET = "post_tweet"  # 发推文
+    POST_REPLY = "post_reply"  # 发回复
+    LIKE_TWEET = "like_tweet"  # 点赞
+    RETWEET = "retweet"  # 转推
+    OTHER = "other"  # 其他
+
+
+class AccountActivity(Base):
+    """Account activity log for risk control (账号活动日志用于风控)."""
+
+    __tablename__ = "account_activities"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("twitter_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+
+    # Action details
+    action_type: Mapped[AccountActionType] = mapped_column(
+        Enum(AccountActionType), nullable=False
+    )
+    endpoint: Mapped[str | None] = mapped_column(String(255))  # API endpoint called
+    keyword: Mapped[str | None] = mapped_column(String(255))  # Search keyword if applicable
+    target_user_id: Mapped[str | None] = mapped_column(String(50))  # Target user ID if applicable
+
+    # Result
+    success: Mapped[bool] = mapped_column(Boolean, default=True)
+    response_time_ms: Mapped[int | None] = mapped_column(Integer)  # Response time in ms
+    result_count: Mapped[int | None] = mapped_column(Integer)  # Number of results returned
+    error_code: Mapped[str | None] = mapped_column(String(50))  # Error code if failed
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    # Risk indicators
+    is_rate_limited: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_suspicious: Mapped[bool] = mapped_column(Boolean, default=False)  # Flagged as suspicious
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    # Relationships
+    account: Mapped["TwitterAccount"] = relationship()
+
+    __table_args__ = (
+        Index("idx_account_activities_account_id", "account_id"),
+        Index("idx_account_activities_action_type", "action_type"),
+        Index("idx_account_activities_created_at", "created_at"),
+        Index("idx_account_activities_success", "success"),
+        Index("idx_account_activities_is_rate_limited", "is_rate_limited"),
+    )
+
+
+class AccountDailyStats(Base):
+    """Daily statistics for account risk control (账号每日统计用于风控)."""
+
+    __tablename__ = "account_daily_stats"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("twitter_accounts.id", ondelete="CASCADE"), nullable=False
+    )
+    stat_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)  # Date of statistics
+
+    # Request counts
+    total_requests: Mapped[int] = mapped_column(Integer, default=0)
+    successful_requests: Mapped[int] = mapped_column(Integer, default=0)
+    failed_requests: Mapped[int] = mapped_column(Integer, default=0)
+    rate_limit_hits: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Action breakdown
+    search_count: Mapped[int] = mapped_column(Integer, default=0)
+    user_fetch_count: Mapped[int] = mapped_column(Integer, default=0)
+    tweet_fetch_count: Mapped[int] = mapped_column(Integer, default=0)
+    dm_count: Mapped[int] = mapped_column(Integer, default=0)
+    post_count: Mapped[int] = mapped_column(Integer, default=0)
+    reply_count: Mapped[int] = mapped_column(Integer, default=0)
+    like_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Performance metrics
+    avg_response_time_ms: Mapped[float | None] = mapped_column(Float)
+    max_response_time_ms: Mapped[int | None] = mapped_column(Integer)
+    min_response_time_ms: Mapped[int | None] = mapped_column(Integer)
+
+    # Rate limiting
+    first_rate_limit_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_rate_limit_at: Mapped[datetime | None] = mapped_column(DateTime)
+    rate_limit_duration_minutes: Mapped[int] = mapped_column(Integer, default=0)  # Total minutes rate limited
+
+    # Time distribution (requests per hour, stored as JSON)
+    hourly_distribution: Mapped[str | None] = mapped_column(Text)  # JSON: {"0": 10, "1": 5, ...}
+
+    # Risk analysis
+    risk_score: Mapped[float] = mapped_column(Float, default=0.0)  # 0-100, higher = more risk
+    anomaly_detected: Mapped[bool] = mapped_column(Boolean, default=False)
+    anomaly_reason: Mapped[str | None] = mapped_column(Text)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    account: Mapped["TwitterAccount"] = relationship()
+
+    __table_args__ = (
+        Index("idx_account_daily_stats_account_date", "account_id", "stat_date", unique=True),
+        Index("idx_account_daily_stats_stat_date", "stat_date"),
+        Index("idx_account_daily_stats_risk_score", "risk_score"),
     )
 
 

@@ -1,0 +1,369 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("groups.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-collection"></i> {{ _("groups.title") }}</h2>
+        <p class="text-muted">{{ _("groups.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addGroupModal">
+            <i class="bi bi-plus-lg"></i> {{ _("groups.add_group") }}
+        </button>
+        <a href="/admin/accounts" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> {{ _("common.back") }}
+        </a>
+    </div>
+</div>
+
+<!-- Active Filter Info -->
+<div class="alert alert-info mb-3">
+    <i class="bi bi-info-circle"></i> {{ _("groups.active_only_hint") }}
+</div>
+
+<!-- Status Filter -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" id="active-filter" onchange="loadGroups()">
+            <option value="">{{ _("groups.all_groups") }}</option>
+            <option value="true">{{ _("groups.active_groups") }}</option>
+            <option value="false">{{ _("groups.inactive_groups") }}</option>
+        </select>
+    </div>
+</div>
+
+<!-- Groups Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>{{ _("common.name") }}</th>
+                        <th>{{ _("groups.tags") }}</th>
+                        <th>{{ _("groups.account_count") }}</th>
+                        <th>{{ _("groups.active_account_count") }}</th>
+                        <th>{{ _("groups.priority") }}</th>
+                        <th>{{ _("common.status") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="groups-table-body">
+                    <tr>
+                        <td colspan="7" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Group Modal -->
+<div class="modal fade" id="addGroupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("groups.add_group") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return addGroup(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("groups.group_name") }} <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="group-name" placeholder="{{ _('groups.group_name_placeholder') }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("groups.group_description") }} ({{ _("common.optional") }})</label>
+                        <textarea class="form-control" id="group-description" rows="2" placeholder="{{ _('groups.group_description_placeholder') }}"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("groups.tags") }} ({{ _("common.optional") }})</label>
+                        <input type="text" class="form-control" id="group-tags" placeholder="{{ _('groups.tags_placeholder') }}">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">{{ _("groups.color") }} ({{ _("common.optional") }})</label>
+                            <input type="color" class="form-control form-control-color" id="group-color" value="#6c757d">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">{{ _("groups.priority") }}</label>
+                            <input type="number" class="form-control" id="group-priority" value="0" min="0">
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="group-active" checked>
+                        <label class="form-check-label" for="group-active">{{ _("groups.is_active") }}</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("groups.add_group") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Group Modal -->
+<div class="modal fade" id="editGroupModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("groups.edit_group") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return updateGroup(event)">
+                <input type="hidden" id="edit-group-id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("groups.group_name") }} <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="edit-group-name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("groups.group_description") }} ({{ _("common.optional") }})</label>
+                        <textarea class="form-control" id="edit-group-description" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("groups.tags") }} ({{ _("common.optional") }})</label>
+                        <input type="text" class="form-control" id="edit-group-tags">
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">{{ _("groups.color") }}</label>
+                            <input type="color" class="form-control form-control-color" id="edit-group-color" value="#6c757d">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">{{ _("groups.priority") }}</label>
+                            <input type="number" class="form-control" id="edit-group-priority" value="0" min="0">
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="edit-group-active">
+                        <label class="form-check-label" for="edit-group-active">{{ _("groups.is_active") }}</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("common.save") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadGroups() {
+    const activeFilter = document.getElementById('active-filter').value;
+    let url = '/api/account-groups/';
+    if (activeFilter !== '') {
+        url += `?is_active=${activeFilter}`;
+    }
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load groups');
+
+        const data = await response.json();
+        renderGroups(data.groups);
+    } catch (error) {
+        console.error('Error loading groups:', error);
+        document.getElementById('groups-table-body').innerHTML =
+            `<tr><td colspan="7" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderGroups(groups) {
+    const tbody = document.getElementById('groups-table-body');
+
+    if (groups.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${t('groups.no_groups')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = groups.map(group => {
+        const tags = group.tags ? JSON.parse(group.tags) : [];
+        const tagsHtml = tags.map(tag => `<span class="badge bg-secondary me-1">${escapeHtml(tag)}</span>`).join('');
+        const statusBadge = group.is_active
+            ? `<span class="badge bg-success">${t('status.active')}</span>`
+            : `<span class="badge bg-secondary">${t('status.inactive')}</span>`;
+        const colorDot = group.color
+            ? `<span class="d-inline-block rounded-circle me-2" style="width: 12px; height: 12px; background-color: ${group.color};"></span>`
+            : '';
+
+        return `
+            <tr>
+                <td>${colorDot}${escapeHtml(group.name)}</td>
+                <td>${tagsHtml || '-'}</td>
+                <td>${group.account_count}</td>
+                <td>${group.active_account_count}</td>
+                <td>${group.priority}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary" onclick="editGroup(${group.id})" title="${t('common.edit')}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-${group.is_active ? 'warning' : 'success'}" onclick="toggleGroup(${group.id})" title="${t('groups.toggle_active')}">
+                            <i class="bi bi-${group.is_active ? 'pause' : 'play'}"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deleteGroup(${group.id})" title="${t('common.delete')}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function addGroup(event) {
+    event.preventDefault();
+
+    const tagsInput = document.getElementById('group-tags').value;
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    const data = {
+        name: document.getElementById('group-name').value,
+        description: document.getElementById('group-description').value || null,
+        tags: tags.length > 0 ? tags : null,
+        color: document.getElementById('group-color').value,
+        priority: parseInt(document.getElementById('group-priority').value) || 0,
+        is_active: document.getElementById('group-active').checked
+    };
+
+    try {
+        const response = await fetch('/api/account-groups/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addGroupModal')).hide();
+            document.getElementById('group-name').value = '';
+            document.getElementById('group-description').value = '';
+            document.getElementById('group-tags').value = '';
+            document.getElementById('group-color').value = '#6c757d';
+            document.getElementById('group-priority').value = '0';
+            document.getElementById('group-active').checked = true;
+            loadGroups();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function editGroup(groupId) {
+    try {
+        const response = await fetch(`/api/account-groups/${groupId}`);
+        if (!response.ok) throw new Error('Failed to load group');
+
+        const group = await response.json();
+        const tags = group.tags ? JSON.parse(group.tags) : [];
+
+        document.getElementById('edit-group-id').value = group.id;
+        document.getElementById('edit-group-name').value = group.name;
+        document.getElementById('edit-group-description').value = group.description || '';
+        document.getElementById('edit-group-tags').value = tags.join(', ');
+        document.getElementById('edit-group-color').value = group.color || '#6c757d';
+        document.getElementById('edit-group-priority').value = group.priority;
+        document.getElementById('edit-group-active').checked = group.is_active;
+
+        new bootstrap.Modal(document.getElementById('editGroupModal')).show();
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function updateGroup(event) {
+    event.preventDefault();
+
+    const groupId = document.getElementById('edit-group-id').value;
+    const tagsInput = document.getElementById('edit-group-tags').value;
+    const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+
+    const data = {
+        name: document.getElementById('edit-group-name').value,
+        description: document.getElementById('edit-group-description').value || null,
+        tags: tags.length > 0 ? tags : null,
+        color: document.getElementById('edit-group-color').value,
+        priority: parseInt(document.getElementById('edit-group-priority').value) || 0,
+        is_active: document.getElementById('edit-group-active').checked
+    };
+
+    try {
+        const response = await fetch(`/api/account-groups/${groupId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('editGroupModal')).hide();
+            loadGroups();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function toggleGroup(groupId) {
+    if (!confirm(t('groups.confirm_toggle'))) return;
+
+    try {
+        const response = await fetch(`/api/account-groups/${groupId}/toggle-active`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            loadGroups();
+        } else {
+            alert(t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function deleteGroup(groupId) {
+    if (!confirm(t('groups.confirm_delete'))) return;
+
+    try {
+        const response = await fetch(`/api/account-groups/${groupId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            loadGroups();
+        } else {
+            alert(t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadGroups);
+</script>
+{% endblock %}

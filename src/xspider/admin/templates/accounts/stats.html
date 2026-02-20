@@ -1,0 +1,565 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("stats.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-graph-up"></i> {{ _("stats.title") }}</h2>
+        <p class="text-muted">{{ _("stats.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <a href="/admin/accounts" class="btn btn-outline-secondary">
+            <i class="bi bi-arrow-left"></i> {{ _("common.back") }}
+        </a>
+        <button class="btn btn-primary" onclick="refreshStats()">
+            <i class="bi bi-arrow-clockwise"></i> {{ _("common.refresh") }}
+        </button>
+    </div>
+</div>
+
+<!-- Risk Summary Cards -->
+<div class="row mb-4" id="summary-cards">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">{{ _("stats.total_accounts") }}</h6>
+                        <h2 class="card-title mb-0" id="total-accounts">-</h2>
+                    </div>
+                    <i class="bi bi-twitter fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">{{ _("stats.low_risk") }}</h6>
+                        <h2 class="card-title mb-0" id="low-risk">-</h2>
+                    </div>
+                    <i class="bi bi-shield-check fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">{{ _("stats.medium_risk") }}</h6>
+                        <h2 class="card-title mb-0" id="medium-risk">-</h2>
+                    </div>
+                    <i class="bi bi-exclamation-triangle fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="card-subtitle mb-1">{{ _("stats.high_risk") }}</h6>
+                        <h2 class="card-title mb-0" id="high-risk">-</h2>
+                    </div>
+                    <i class="bi bi-shield-exclamation fs-1 opacity-50"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Accounts Risk Table -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-table"></i> {{ _("stats.account_risk_overview") }}</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>{{ _("accounts.id") }}</th>
+                        <th>{{ _("accounts.name") }}</th>
+                        <th>{{ _("accounts.status") }}</th>
+                        <th>{{ _("stats.risk_score") }}</th>
+                        <th>{{ _("stats.risk_level") }}</th>
+                        <th>{{ _("stats.today_requests") }}</th>
+                        <th>{{ _("stats.today_rate_limits") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-risk-body">
+                    <tr>
+                        <td colspan="8" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Account Detail Modal -->
+<div class="modal fade" id="accountDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-bar-chart"></i> <span id="detail-account-name">{{ _("stats.account_detail") }}</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Daily Stats Chart -->
+                <div class="row mb-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">{{ _("stats.daily_trend") }}</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="dailyChart" height="100"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Summary -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card border-primary">
+                            <div class="card-body text-center">
+                                <h4 id="detail-total-requests">-</h4>
+                                <small class="text-muted">{{ _("stats.total_requests") }}</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-success">
+                            <div class="card-body text-center">
+                                <h4 id="detail-success-rate">-</h4>
+                                <small class="text-muted">{{ _("stats.success_rate") }}</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-warning">
+                            <div class="card-body text-center">
+                                <h4 id="detail-rate-limits">-</h4>
+                                <small class="text-muted">{{ _("stats.rate_limit_hits") }}</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card border-info">
+                            <div class="card-body text-center">
+                                <h4 id="detail-avg-response">-</h4>
+                                <small class="text-muted">{{ _("stats.avg_response_time") }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Breakdown -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">{{ _("stats.action_breakdown") }}</h6>
+                            </div>
+                            <div class="card-body">
+                                <canvas id="actionChart" height="200"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <h6 class="mb-0">{{ _("stats.risk_factors") }}</h6>
+                            </div>
+                            <div class="card-body" id="risk-factors">
+                                <p class="text-muted">{{ _("stats.no_risk_factors") }}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Activities -->
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0">{{ _("stats.recent_activities") }}</h6>
+                        <span class="badge bg-secondary" id="activities-count">0</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>{{ _("stats.time") }}</th>
+                                        <th>{{ _("stats.action") }}</th>
+                                        <th>{{ _("stats.keyword") }}</th>
+                                        <th>{{ _("stats.result") }}</th>
+                                        <th>{{ _("stats.response_time") }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="activities-body">
+                                    <tr>
+                                        <td colspan="5" class="text-center">{{ _("common.loading") }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" onclick="refreshAccountDetail()">
+                    <i class="bi bi-arrow-clockwise"></i> {{ _("stats.refresh_stats") }}
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.close") }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentAccountId = null;
+let dailyChart = null;
+let actionChart = null;
+
+async function loadRiskSummary() {
+    try {
+        const response = await fetch('/api/accounts/stats/risk-summary');
+        if (!response.ok) throw new Error('Failed to load risk summary');
+
+        const data = await response.json();
+        renderRiskSummary(data);
+    } catch (error) {
+        console.error('Error loading risk summary:', error);
+    }
+}
+
+function renderRiskSummary(data) {
+    // Update summary cards
+    document.getElementById('total-accounts').textContent = data.summary.total_accounts;
+    document.getElementById('low-risk').textContent = data.summary.low_risk;
+    document.getElementById('medium-risk').textContent = data.summary.medium_risk;
+    document.getElementById('high-risk').textContent = data.summary.high_risk;
+
+    // Render accounts table
+    const tbody = document.getElementById('accounts-risk-body');
+
+    if (!data.accounts || data.accounts.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">${t('accounts.no_accounts')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = data.accounts.map(account => {
+        const riskScore = account.today?.risk_score || 0;
+        const todayRequests = account.today?.requests || 0;
+        const todayRateLimits = account.today?.rate_limits || 0;
+        const riskBadge = getRiskBadge(account.risk_level, riskScore);
+        const statusBadge = getStatusBadge(account.status);
+
+        // Ensure minimum display width for progress bar
+        const displayWidth = Math.max(riskScore, 15);
+
+        return `
+            <tr>
+                <td>${account.account_id}</td>
+                <td>${account.account_name || '-'}</td>
+                <td>${statusBadge}</td>
+                <td>
+                    <div class="d-flex align-items-center">
+                        <div class="progress me-2" style="width: 80px; height: 18px;">
+                            <div class="progress-bar ${getRiskProgressClass(riskScore)}"
+                                 style="width: ${displayWidth}%">
+                            </div>
+                        </div>
+                        <small class="text-muted">${riskScore.toFixed(1)}</small>
+                    </div>
+                </td>
+                <td>${riskBadge}</td>
+                <td>${todayRequests}</td>
+                <td>${todayRateLimits}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="showAccountDetail(${account.account_id}, '${(account.account_name || '').replace(/'/g, "\\'")}')">
+                        <i class="bi bi-bar-chart"></i> ${t('stats.view_detail')}
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getRiskBadge(level, score) {
+    const badges = {
+        'low': `<span class="badge bg-success">${t('stats.low')}</span>`,
+        'medium': `<span class="badge bg-warning">${t('stats.medium')}</span>`,
+        'high': `<span class="badge bg-danger">${t('stats.high')}</span>`,
+        'critical': `<span class="badge bg-dark">${t('stats.critical')}</span>`
+    };
+    return badges[level] || `<span class="badge bg-secondary">${level}</span>`;
+}
+
+function getRiskProgressClass(score) {
+    if (score < 30) return 'bg-success';
+    if (score < 60) return 'bg-warning';
+    return 'bg-danger';
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'active': `<span class="badge bg-success">${t('status.active')}</span>`,
+        'rate_limited': `<span class="badge bg-warning">${t('status.rate_limited')}</span>`,
+        'banned': `<span class="badge bg-danger">${t('status.banned')}</span>`,
+        'needs_verify': `<span class="badge bg-info">${t('status.needs_verify')}</span>`,
+        'error': `<span class="badge bg-secondary">${t('status.error')}</span>`
+    };
+    return badges[status] || status;
+}
+
+async function showAccountDetail(accountId, accountName) {
+    currentAccountId = accountId;
+    document.getElementById('detail-account-name').textContent = accountName || `Account #${accountId}`;
+
+    const modal = new bootstrap.Modal(document.getElementById('accountDetailModal'));
+    modal.show();
+
+    await loadAccountStats(accountId);
+    await loadAccountActivities(accountId);
+}
+
+async function loadAccountStats(accountId) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/stats?days=7`);
+        if (!response.ok) throw new Error('Failed to load stats');
+
+        const data = await response.json();
+        renderAccountStats(data);
+    } catch (error) {
+        console.error('Error loading account stats:', error);
+    }
+}
+
+function renderAccountStats(data) {
+    // Update summary values
+    const summary = data.summary || {};
+    document.getElementById('detail-total-requests').textContent = summary.total_requests || 0;
+    // success_rate is 0-1, multiply by 100 for percentage display
+    const successRate = (summary.success_rate || 0) * 100;
+    document.getElementById('detail-success-rate').textContent = successRate.toFixed(1) + '%';
+    document.getElementById('detail-rate-limits').textContent = summary.rate_limit_hits || 0;
+    // Get avg response time from recent activities if not in summary
+    let avgResponseTime = summary.avg_response_time_ms || 0;
+    if (!avgResponseTime && data.recent_activities && data.recent_activities.length > 0) {
+        const times = data.recent_activities.filter(a => a.response_time_ms).map(a => a.response_time_ms);
+        avgResponseTime = times.length > 0 ? times.reduce((a, b) => a + b, 0) / times.length : 0;
+    }
+    document.getElementById('detail-avg-response').textContent = avgResponseTime.toFixed(0) + 'ms';
+
+    // Render risk factors
+    const riskFactors = document.getElementById('risk-factors');
+    if (summary.risk_factors && summary.risk_factors.length > 0) {
+        riskFactors.innerHTML = summary.risk_factors.map(factor => `
+            <div class="alert alert-warning py-2 mb-2">
+                <i class="bi bi-exclamation-triangle"></i> ${factor}
+            </div>
+        `).join('');
+    } else {
+        riskFactors.innerHTML = `<p class="text-success"><i class="bi bi-check-circle"></i> ${t('stats.no_risk_factors')}</p>`;
+    }
+
+    // Render daily chart
+    renderDailyChart(data.daily_breakdown || []);
+
+    // Render action breakdown chart
+    renderActionChart(data.action_breakdown || {});
+}
+
+function renderDailyChart(dailyData) {
+    const ctx = document.getElementById('dailyChart').getContext('2d');
+
+    if (dailyChart) {
+        dailyChart.destroy();
+    }
+
+    const labels = dailyData.map(d => d.date);
+    const requests = dailyData.map(d => d.total_requests);
+    const rateLimits = dailyData.map(d => d.rate_limit_hits);
+    const riskScores = dailyData.map(d => d.risk_score);
+
+    dailyChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: t('stats.requests'),
+                    data: requests,
+                    borderColor: 'rgb(54, 162, 235)',
+                    backgroundColor: 'rgba(54, 162, 235, 0.1)',
+                    fill: true,
+                    yAxisID: 'y'
+                },
+                {
+                    label: t('stats.rate_limits'),
+                    data: rateLimits,
+                    borderColor: 'rgb(255, 193, 7)',
+                    backgroundColor: 'rgba(255, 193, 7, 0.1)',
+                    fill: true,
+                    yAxisID: 'y'
+                },
+                {
+                    label: t('stats.risk_score'),
+                    data: riskScores,
+                    borderColor: 'rgb(220, 53, 69)',
+                    borderDash: [5, 5],
+                    fill: false,
+                    yAxisID: 'y1'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: {
+                mode: 'index',
+                intersect: false,
+            },
+            scales: {
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: {
+                        display: true,
+                        text: t('stats.count')
+                    }
+                },
+                y1: {
+                    type: 'linear',
+                    display: true,
+                    position: 'right',
+                    min: 0,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: t('stats.risk_score')
+                    },
+                    grid: {
+                        drawOnChartArea: false,
+                    },
+                }
+            }
+        }
+    });
+}
+
+function renderActionChart(actionData) {
+    const ctx = document.getElementById('actionChart').getContext('2d');
+
+    if (actionChart) {
+        actionChart.destroy();
+    }
+
+    const labels = Object.keys(actionData);
+    const values = Object.values(actionData);
+
+    if (labels.length === 0) {
+        return;
+    }
+
+    actionChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: values,
+                backgroundColor: [
+                    'rgb(54, 162, 235)',
+                    'rgb(75, 192, 192)',
+                    'rgb(255, 205, 86)',
+                    'rgb(255, 99, 132)',
+                    'rgb(153, 102, 255)',
+                    'rgb(201, 203, 207)'
+                ]
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    position: 'right'
+                }
+            }
+        }
+    });
+}
+
+async function loadAccountActivities(accountId) {
+    try {
+        const response = await fetch(`/api/accounts/${accountId}/activities?limit=50`);
+        if (!response.ok) throw new Error('Failed to load activities');
+
+        const data = await response.json();
+        renderActivities(data);
+    } catch (error) {
+        console.error('Error loading activities:', error);
+    }
+}
+
+function renderActivities(data) {
+    document.getElementById('activities-count').textContent = data.total_count || 0;
+
+    const tbody = document.getElementById('activities-body');
+    const activities = data.activities || [];
+
+    if (activities.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${t('stats.no_activities')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = activities.map(activity => {
+        const time = new Date(activity.created_at).toLocaleString();
+        const resultBadge = activity.success
+            ? `<span class="badge bg-success">${t('common.success')}</span>`
+            : activity.is_rate_limited
+                ? `<span class="badge bg-warning">${t('status.rate_limited')}</span>`
+                : `<span class="badge bg-danger">${t('common.failed')}</span>`;
+
+        return `
+            <tr>
+                <td><small>${time}</small></td>
+                <td><code>${activity.action_type}</code></td>
+                <td>${activity.keyword || '-'}</td>
+                <td>${resultBadge} ${activity.result_count ? `(${activity.result_count})` : ''}</td>
+                <td>${activity.response_time_ms ? activity.response_time_ms + 'ms' : '-'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function refreshAccountDetail() {
+    if (!currentAccountId) return;
+
+    try {
+        await fetch(`/api/accounts/${currentAccountId}/stats/refresh`, { method: 'POST' });
+        await loadAccountStats(currentAccountId);
+        await loadAccountActivities(currentAccountId);
+    } catch (error) {
+        console.error('Error refreshing stats:', error);
+    }
+}
+
+function refreshStats() {
+    loadRiskSummary();
+}
+
+document.addEventListener('DOMContentLoaded', loadRiskSummary);
+</script>
+{% endblock %}

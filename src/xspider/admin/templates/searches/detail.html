@@ -1,17 +1,53 @@
 {% extends "base.html" %}
 
-{% block title %}Search Results - xspider{% endblock %}
+{% block title %}{{ _("searches.view_results") }} - xspider{% endblock %}
 
 {% block content %}
 <div class="row mb-4">
     <div class="col">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="/searches">Search History</a></li>
+                <li class="breadcrumb-item"><a href="/searches">{{ _("searches.search_history") }}</a></li>
                 <li class="breadcrumb-item active">Search #{{ search_id }}</li>
             </ol>
         </nav>
-        <h2><i class="bi bi-search"></i> Search Results</h2>
+        <h2><i class="bi bi-search"></i> {{ _("searches.view_results") }}</h2>
+    </div>
+</div>
+
+<!-- Progress Bar (shown when search is running) -->
+<div id="progress-section" class="row mb-4 d-none">
+    <div class="col">
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-hourglass-split"></i> {{ _("searches.progress") }}</span>
+                <button id="cancel-btn" class="btn btn-sm btn-outline-light" onclick="cancelCurrentSearch()">
+                    <i class="bi bi-x-circle"></i> {{ _("searches.cancel") }}
+                </button>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span id="progress-stage" class="fw-bold">{{ _("searches.initializing") }}</span>
+                        <span id="progress-percent" class="badge bg-primary">0%</span>
+                    </div>
+                    <div class="progress" style="height: 25px;">
+                        <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+                             role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info mb-0" id="progress-info">
+                    <div class="d-flex align-items-center">
+                        <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                        <span id="progress-message">{{ _("searches.progress_wait") }}</span>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        <i class="bi bi-clock"></i> <span id="progress-time">{{ _("searches.progress_queued") }}</span>
+                    </small>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -20,19 +56,19 @@
     <div class="col-md-8">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-info-circle"></i> Search Details
+                <i class="bi bi-info-circle"></i> {{ _("searches.title") }}
             </div>
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Keywords:</strong> <span id="search-keywords">-</span></p>
-                        <p><strong>Industry:</strong> <span id="search-industry">-</span></p>
-                        <p><strong>Status:</strong> <span id="search-status">-</span></p>
+                        <p><strong>{{ _("searches.keywords") }}:</strong> <span id="search-keywords">-</span></p>
+                        <p><strong>{{ _("searches.industry") }}:</strong> <span id="search-industry">-</span></p>
+                        <p><strong>{{ _("searches.status") }}:</strong> <span id="search-status">-</span></p>
                     </div>
                     <div class="col-md-6">
-                        <p><strong>Seeds Found:</strong> <span id="search-seeds">-</span></p>
-                        <p><strong>Users Crawled:</strong> <span id="search-crawled">-</span></p>
-                        <p><strong>Credits Used:</strong> <span id="search-credits">-</span></p>
+                        <p><strong>{{ _("searches.seeds_found") }}:</strong> <span id="search-seeds">-</span></p>
+                        <p><strong>{{ _("searches.users_crawled") }}:</strong> <span id="search-crawled">-</span></p>
+                        <p><strong>{{ _("searches.credits_used") }}:</strong> <span id="search-credits">-</span></p>
                     </div>
                 </div>
                 <div id="error-message" class="alert alert-danger d-none"></div>
@@ -42,21 +78,21 @@
     <div class="col-md-4">
         <div class="card">
             <div class="card-header">
-                <i class="bi bi-download"></i> Export
+                <i class="bi bi-download"></i> {{ _("common.export") }}
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
                     <button class="btn btn-success" onclick="exportResults('csv')">
-                        <i class="bi bi-file-earmark-spreadsheet"></i> Export CSV
+                        <i class="bi bi-file-earmark-spreadsheet"></i> {{ _("common.export") }} CSV
                     </button>
                     <button class="btn btn-outline-success" onclick="exportResults('json')">
-                        <i class="bi bi-file-earmark-code"></i> Export JSON
+                        <i class="bi bi-file-earmark-code"></i> {{ _("common.export") }} JSON
                     </button>
                 </div>
                 <div class="form-check mt-3">
                     <input class="form-check-input" type="checkbox" id="include-irrelevant">
                     <label class="form-check-label" for="include-irrelevant">
-                        Include irrelevant users
+                        {{ _("searches.relevant") }}
                     </label>
                 </div>
             </div>
@@ -64,40 +100,148 @@
     </div>
 </div>
 
-<!-- Results Table -->
-<div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-people"></i> Discovered Influencers</span>
-        <span class="badge bg-primary" id="influencer-count">0</span>
+<!-- Tabs for Table and Graph -->
+<ul class="nav nav-tabs mb-3" id="resultTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="table-tab" data-bs-toggle="tab" data-bs-target="#table-content"
+                type="button" role="tab">
+            <i class="bi bi-table"></i> {{ _("searches.influencers_found") }}
+            <span class="badge bg-primary ms-1" id="influencer-count">0</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="graph-tab" data-bs-toggle="tab" data-bs-target="#graph-content"
+                type="button" role="tab" onclick="loadGraph()">
+            <i class="bi bi-diagram-3"></i> {{ _("searches.relationship_graph") }}
+            <span class="badge bg-info ms-1" id="relationship-count">0</span>
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="resultTabsContent">
+    <!-- Results Table Tab -->
+    <div class="tab-pane fade show active" id="table-content" role="tabpanel">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>#</th>
+                                <th>{{ _("searches.screen_name") }}</th>
+                                <th>{{ _("searches.depth") }}</th>
+                                <th>{{ _("searches.followers") }}</th>
+                                <th>{{ _("searches.pagerank") }}</th>
+                                <th>{{ _("searches.hidden_score") }}</th>
+                                <th>{{ _("searches.relevance") }}</th>
+                                <th>{{ _("common.actions") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="influencers-table-body">
+                            <tr>
+                                <td colspan="8" class="text-center py-4">{{ _("common.loading") }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
     </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Rank</th>
-                        <th>User</th>
-                        <th>Followers</th>
-                        <th>PageRank</th>
-                        <th>Hidden Score</th>
-                        <th>Relevance</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody id="influencers-table-body">
-                    <tr>
-                        <td colspan="7" class="text-center py-4">Loading...</td>
-                    </tr>
-                </tbody>
-            </table>
+
+    <!-- Relationship Graph Tab -->
+    <div class="tab-pane fade" id="graph-content" role="tabpanel">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-diagram-3"></i> {{ _("searches.relationship_graph") }}</span>
+                <div class="d-flex align-items-center gap-2">
+                    <label class="mb-0 small">{{ _("searches.max_nodes") }}:</label>
+                    <select class="form-select form-select-sm" style="width: auto;" id="max-nodes" onchange="loadGraph()">
+                        <option value="100">100</option>
+                        <option value="200">200</option>
+                        <option value="500" selected>500</option>
+                        <option value="1000">1000</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary" onclick="resetGraphZoom()">
+                        <i class="bi bi-arrows-fullscreen"></i> {{ _("searches.reset_zoom") }}
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Graph Legend -->
+                <div class="mb-3">
+                    <small class="text-muted">
+                        <span class="badge bg-danger me-1">&nbsp;</span> {{ _("searches.depth") }} 0 ({{ _("searches.seeds") }})
+                        <span class="badge bg-warning ms-2 me-1">&nbsp;</span> {{ _("searches.depth") }} 1
+                        <span class="badge bg-success ms-2 me-1">&nbsp;</span> {{ _("searches.depth") }} 2
+                        <span class="badge bg-info ms-2 me-1">&nbsp;</span> {{ _("searches.depth") }} 3+
+                    </small>
+                </div>
+                <!-- Graph Stats -->
+                <div class="row mb-3" id="graph-stats">
+                    <div class="col-auto">
+                        <span class="badge bg-secondary">{{ _("searches.nodes") }}: <span id="stat-nodes">0</span></span>
+                    </div>
+                    <div class="col-auto">
+                        <span class="badge bg-secondary">{{ _("searches.edges") }}: <span id="stat-edges">0</span></span>
+                    </div>
+                    <div class="col-auto">
+                        <span class="badge bg-secondary">{{ _("searches.max_depth") }}: <span id="stat-max-depth">0</span></span>
+                    </div>
+                </div>
+                <!-- Graph Container -->
+                <div id="graph-container" style="height: 600px; border: 1px solid #ddd; border-radius: 8px; background: #fafafa;">
+                    <div class="d-flex justify-content-center align-items-center h-100">
+                        <div class="text-center text-muted">
+                            <i class="bi bi-diagram-3 fs-1"></i>
+                            <p class="mt-2">{{ _("searches.click_to_load_graph") }}</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Node Info Panel -->
+                <div id="node-info" class="mt-3 d-none">
+                    <div class="card border-primary">
+                        <div class="card-body py-2">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong id="node-name">-</strong>
+                                    <a id="node-link" href="#" target="_blank" class="ms-2">
+                                        @<span id="node-screen-name">-</span>
+                                    </a>
+                                </div>
+                                <div>
+                                    <span class="badge bg-info me-2">{{ _("searches.depth") }}: <span id="node-depth">-</span></span>
+                                    <span class="badge bg-primary">{{ _("searches.followers") }}: <span id="node-followers">-</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 {% endblock %}
 
 {% block extra_js %}
+<!-- D3.js Library for Graph Visualization -->
+<script src="https://d3js.org/d3.v7.min.js"></script>
 <script>
 const searchId = {{ search_id }};
+let progressPollInterval = null;
+let elapsedTimeInterval = null;
+let searchStartTime = null;
+let currentCreditsUsed = 0;
+
+// Progress stage translations
+const stageTranslations = {
+    'initializing': '{{ _("searches.stage_initializing") }}',
+    'searching_seeds': '{{ _("searches.stage_searching_seeds") }}',
+    'crawling_followers': '{{ _("searches.stage_crawling_followers") }}',
+    'building_graph': '{{ _("searches.stage_building_graph") }}',
+    'calculating_pagerank': '{{ _("searches.stage_calculating_pagerank") }}',
+    'ai_analyzing': '{{ _("searches.stage_ai_analyzing") }}',
+    'finalizing': '{{ _("searches.stage_finalizing") }}'
+};
 
 async function loadSearchDetails() {
     try {
@@ -106,17 +250,200 @@ async function loadSearchDetails() {
 
         const data = await response.json();
         renderSearchInfo(data);
-        renderInfluencers(data.influencers);
+        renderInfluencers(data.influencers, data.relationships);
+
+        // Store for cancel
+        searchStartTime = new Date(data.created_at);
+        currentCreditsUsed = data.credits_used;
+
+        // Start polling if search is running
+        if (data.status === 'running' || data.status === 'pending') {
+            showProgressSection();
+            updateProgress(data);
+            startProgressPolling();
+            startElapsedTimeCounter();
+            // Initialize elapsed time from server timestamps
+            if (window.updateServerElapsed && data.created_at && data.progress_updated_at) {
+                window.updateServerElapsed(data.created_at, data.progress_updated_at);
+            }
+        } else {
+            hideProgressSection();
+            stopProgressPolling();
+            stopElapsedTimeCounter();
+        }
     } catch (error) {
         console.error('Error loading search:', error);
         document.getElementById('influencers-table-body').innerHTML =
-            '<tr><td colspan="7" class="text-center text-danger">Error loading results</td></tr>';
+            `<tr><td colspan="7" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function showProgressSection() {
+    document.getElementById('progress-section').classList.remove('d-none');
+}
+
+function hideProgressSection() {
+    document.getElementById('progress-section').classList.add('d-none');
+}
+
+function updateProgress(data) {
+    const percent = data.progress_percent || 0;
+    const stage = data.progress_stage || 'initializing';
+    const message = data.progress_message || '{{ _("searches.progress_queued") }}';
+
+    // Update progress bar - show indeterminate if no real progress
+    const progressBar = document.getElementById('progress-bar');
+    if (percent === 0 && !data.progress_stage) {
+        // Indeterminate state - show pulsing bar
+        progressBar.style.width = '100%';
+        progressBar.classList.add('bg-info');
+    } else {
+        progressBar.style.width = `${percent}%`;
+        progressBar.classList.remove('bg-info');
+    }
+    progressBar.setAttribute('aria-valuenow', percent);
+
+    // Update percent badge
+    document.getElementById('progress-percent').textContent = percent > 0 ? `${percent}%` : '{{ _("searches.waiting") }}';
+
+    // Update stage text
+    const stageText = stageTranslations[stage] || '{{ _("searches.stage_initializing") }}';
+    document.getElementById('progress-stage').textContent = stageText;
+
+    // Update message
+    document.getElementById('progress-message').textContent = message;
+
+    // Update stats during search
+    document.getElementById('search-seeds').textContent = data.seeds_found;
+    document.getElementById('search-crawled').textContent = data.users_crawled;
+}
+
+function startElapsedTimeCounter() {
+    if (elapsedTimeInterval) return;
+
+    // Use server time difference to avoid timezone/clock sync issues
+    let serverTimeOffset = 0;
+    let lastProgressUpdate = null;
+
+    const updateElapsedTime = () => {
+        if (!searchStartTime) return;
+
+        // Calculate elapsed based on last known server state + local time since then
+        let elapsed;
+        if (lastProgressUpdate) {
+            const localElapsedSinceUpdate = Math.floor((Date.now() - lastProgressUpdate.localTime) / 1000);
+            elapsed = lastProgressUpdate.serverElapsed + localElapsedSinceUpdate;
+        } else {
+            // Fallback: just show seconds since page load
+            elapsed = Math.floor((Date.now() - pageLoadTime) / 1000);
+        }
+
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        const timeStr = minutes > 0
+            ? `${minutes}{{ _("time.minutes_short") }} ${seconds}{{ _("time.seconds_short") }}`
+            : `${seconds}{{ _("time.seconds_short") }}`;
+        document.getElementById('progress-time').textContent =
+            '{{ _("searches.elapsed_time") }}: ' + timeStr;
+    };
+
+    // Update elapsed time from server response
+    window.updateServerElapsed = (createdAt, progressUpdatedAt) => {
+        if (createdAt && progressUpdatedAt) {
+            const created = new Date(createdAt).getTime();
+            const updated = new Date(progressUpdatedAt).getTime();
+            lastProgressUpdate = {
+                serverElapsed: Math.floor((updated - created) / 1000),
+                localTime: Date.now()
+            };
+        }
+    };
+
+    updateElapsedTime();
+    elapsedTimeInterval = setInterval(updateElapsedTime, 1000);
+}
+
+const pageLoadTime = Date.now();
+
+function stopElapsedTimeCounter() {
+    if (elapsedTimeInterval) {
+        clearInterval(elapsedTimeInterval);
+        elapsedTimeInterval = null;
+    }
+}
+
+async function cancelCurrentSearch() {
+    const confirmMsg = t('searches.confirm_cancel').replace('{credits}', currentCreditsUsed);
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    const cancelBtn = document.getElementById('cancel-btn');
+    cancelBtn.disabled = true;
+    cancelBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+    try {
+        const response = await fetch(`/api/searches/${searchId}/cancel`, {
+            method: 'POST'
+        });
+
+        if (response.ok) {
+            alert(t('searches.cancelled_refunded').replace('{credits}', currentCreditsUsed));
+            // Reload page to show updated status
+            window.location.reload();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+            cancelBtn.disabled = false;
+            cancelBtn.innerHTML = '<i class="bi bi-x-circle"></i> {{ _("searches.cancel") }}';
+        }
+    } catch (error) {
+        alert(t('common.error'));
+        cancelBtn.disabled = false;
+        cancelBtn.innerHTML = '<i class="bi bi-x-circle"></i> {{ _("searches.cancel") }}';
+    }
+}
+
+function startProgressPolling() {
+    if (progressPollInterval) return;
+
+    progressPollInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/searches/${searchId}/progress`);
+            if (!response.ok) throw new Error('Failed to fetch progress');
+
+            const data = await response.json();
+            updateProgress(data);
+
+            // Update elapsed time from server timestamps
+            if (window.updateServerElapsed && data.created_at && data.progress_updated_at) {
+                window.updateServerElapsed(data.created_at, data.progress_updated_at);
+            }
+
+            // Stop polling if search is complete or failed
+            if (data.status === 'completed' || data.status === 'failed') {
+                stopProgressPolling();
+                stopElapsedTimeCounter();
+                hideProgressSection();
+                // Reload full details to show results
+                loadSearchDetails();
+            }
+        } catch (error) {
+            console.error('Error polling progress:', error);
+        }
+    }, 2000); // Poll every 2 seconds
+}
+
+function stopProgressPolling() {
+    if (progressPollInterval) {
+        clearInterval(progressPollInterval);
+        progressPollInterval = null;
     }
 }
 
 function renderSearchInfo(search) {
     document.getElementById('search-keywords').textContent = search.keywords;
-    document.getElementById('search-industry').textContent = search.industry || 'Not specified';
+    document.getElementById('search-industry').textContent = search.industry || '-';
     document.getElementById('search-status').innerHTML = getStatusBadge(search.status);
     document.getElementById('search-seeds').textContent = search.seeds_found;
     document.getElementById('search-crawled').textContent = search.users_crawled;
@@ -129,12 +456,13 @@ function renderSearchInfo(search) {
     }
 }
 
-function renderInfluencers(influencers) {
+function renderInfluencers(influencers, relationships) {
     const tbody = document.getElementById('influencers-table-body');
     document.getElementById('influencer-count').textContent = influencers.length;
+    document.getElementById('relationship-count').textContent = relationships ? relationships.length : 0;
 
     if (influencers.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No influencers found</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">${t('searches.no_influencers')}</td></tr>`;
         return;
     }
 
@@ -142,6 +470,8 @@ function renderInfluencers(influencers) {
         const relevanceBadge = inf.is_relevant
             ? `<span class="badge bg-success">${inf.relevance_score}/10</span>`
             : '<span class="badge bg-secondary">N/A</span>';
+
+        const depthBadge = getDepthBadge(inf.depth);
 
         return `
             <tr>
@@ -152,6 +482,7 @@ function renderInfluencers(influencers) {
                     </a>
                     ${inf.name ? `<br><small class="text-muted">${inf.name}</small>` : ''}
                 </td>
+                <td>${depthBadge}</td>
                 <td>${formatNumber(inf.followers_count)}</td>
                 <td>${inf.pagerank_score.toFixed(6)}</td>
                 <td>${inf.hidden_score.toFixed(4)}</td>
@@ -166,12 +497,22 @@ function renderInfluencers(influencers) {
     }).join('');
 }
 
+function getDepthBadge(depth) {
+    const colors = {
+        0: 'bg-danger',
+        1: 'bg-warning',
+        2: 'bg-success',
+    };
+    const color = colors[depth] || 'bg-info';
+    return `<span class="badge ${color}">${depth}</span>`;
+}
+
 function getStatusBadge(status) {
     const badges = {
-        'pending': '<span class="badge bg-secondary">Pending</span>',
-        'running': '<span class="badge bg-primary">Running</span>',
-        'completed': '<span class="badge bg-success">Completed</span>',
-        'failed': '<span class="badge bg-danger">Failed</span>'
+        'pending': `<span class="badge bg-secondary">${t('status.pending')}</span>`,
+        'running': `<span class="badge bg-primary">${t('status.running')}</span>`,
+        'completed': `<span class="badge bg-success">${t('status.completed')}</span>`,
+        'failed': `<span class="badge bg-danger">${t('status.failed')}</span>`
     };
     return badges[status] || status;
 }
@@ -186,6 +527,231 @@ function exportResults(format) {
     const includeIrrelevant = document.getElementById('include-irrelevant').checked;
     window.open(`/api/searches/${searchId}/export?format=${format}&include_irrelevant=${includeIrrelevant}`, '_blank');
 }
+
+// ============================================
+// D3.js Relationship Graph
+// ============================================
+
+let graphSvg = null;
+let graphSimulation = null;
+let graphZoom = null;
+let graphLoaded = false;
+
+async function loadGraph() {
+    if (graphLoaded) return;
+
+    const container = document.getElementById('graph-container');
+    container.innerHTML = `
+        <div class="d-flex justify-content-center align-items-center h-100">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">{{ _("common.loading") }}</span>
+            </div>
+        </div>
+    `;
+
+    const maxNodes = parseInt(document.getElementById('max-nodes').value);
+
+    try {
+        const response = await fetch(`/api/searches/${searchId}/graph?max_nodes=${maxNodes}`);
+        if (!response.ok) throw new Error('Failed to load graph');
+
+        const data = await response.json();
+
+        // Update stats
+        document.getElementById('stat-nodes').textContent = data.stats.node_count;
+        document.getElementById('stat-edges').textContent = data.stats.edge_count;
+        document.getElementById('stat-max-depth').textContent = data.stats.max_depth;
+
+        if (data.nodes.length === 0) {
+            container.innerHTML = `
+                <div class="d-flex justify-content-center align-items-center h-100">
+                    <div class="text-muted">{{ _("searches.no_graph_data") }}</div>
+                </div>
+            `;
+            return;
+        }
+
+        renderGraph(data.nodes, data.edges);
+        graphLoaded = true;
+    } catch (error) {
+        console.error('Error loading graph:', error);
+        container.innerHTML = `
+            <div class="d-flex justify-content-center align-items-center h-100">
+                <div class="text-danger">${t('common.error')}</div>
+            </div>
+        `;
+    }
+}
+
+function renderGraph(nodes, edges) {
+    const container = document.getElementById('graph-container');
+    container.innerHTML = '';
+
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    // Color scale for depth
+    const depthColors = {
+        0: '#dc3545', // Red - seeds
+        1: '#ffc107', // Yellow - depth 1
+        2: '#28a745', // Green - depth 2
+    };
+    const defaultColor = '#17a2b8'; // Info - depth 3+
+
+    // Create SVG
+    const svg = d3.select('#graph-container')
+        .append('svg')
+        .attr('width', width)
+        .attr('height', height);
+
+    // Add zoom behavior
+    graphZoom = d3.zoom()
+        .scaleExtent([0.1, 4])
+        .on('zoom', (event) => {
+            g.attr('transform', event.transform);
+        });
+
+    svg.call(graphZoom);
+
+    const g = svg.append('g');
+
+    // Create arrow marker for directed edges
+    svg.append('defs').append('marker')
+        .attr('id', 'arrowhead')
+        .attr('viewBox', '-0 -5 10 10')
+        .attr('refX', 20)
+        .attr('refY', 0)
+        .attr('orient', 'auto')
+        .attr('markerWidth', 6)
+        .attr('markerHeight', 6)
+        .append('path')
+        .attr('d', 'M 0,-5 L 10,0 L 0,5')
+        .attr('fill', '#999');
+
+    // Build node map for quick lookup
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+    // Filter edges to only include ones where both nodes exist
+    const validEdges = edges.filter(e => nodeMap.has(e.source) && nodeMap.has(e.target));
+
+    // Create simulation
+    graphSimulation = d3.forceSimulation(nodes)
+        .force('link', d3.forceLink(validEdges).id(d => d.id).distance(80))
+        .force('charge', d3.forceManyBody().strength(-200))
+        .force('center', d3.forceCenter(width / 2, height / 2))
+        .force('collision', d3.forceCollide().radius(20));
+
+    // Create edges
+    const link = g.append('g')
+        .selectAll('line')
+        .data(validEdges)
+        .join('line')
+        .attr('stroke', '#999')
+        .attr('stroke-opacity', 0.4)
+        .attr('stroke-width', 1)
+        .attr('marker-end', 'url(#arrowhead)');
+
+    // Create nodes
+    const node = g.append('g')
+        .selectAll('circle')
+        .data(nodes)
+        .join('circle')
+        .attr('r', d => Math.max(5, Math.min(15, Math.log10(d.followers_count + 1) * 3)))
+        .attr('fill', d => depthColors[d.depth] || defaultColor)
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 1.5)
+        .style('cursor', 'pointer')
+        .call(drag(graphSimulation));
+
+    // Add labels for top nodes
+    const labels = g.append('g')
+        .selectAll('text')
+        .data(nodes.filter(n => n.depth === 0 || n.followers_count > 10000))
+        .join('text')
+        .text(d => '@' + d.screen_name)
+        .attr('font-size', 10)
+        .attr('dx', 12)
+        .attr('dy', 4)
+        .attr('fill', '#333');
+
+    // Node hover and click events
+    node.on('mouseover', function(event, d) {
+        d3.select(this).attr('stroke', '#000').attr('stroke-width', 2);
+        showNodeInfo(d);
+    })
+    .on('mouseout', function(event, d) {
+        d3.select(this).attr('stroke', '#fff').attr('stroke-width', 1.5);
+    })
+    .on('click', function(event, d) {
+        showNodeInfo(d);
+    });
+
+    // Update positions on tick
+    graphSimulation.on('tick', () => {
+        link
+            .attr('x1', d => d.source.x)
+            .attr('y1', d => d.source.y)
+            .attr('x2', d => d.target.x)
+            .attr('y2', d => d.target.y);
+
+        node
+            .attr('cx', d => d.x)
+            .attr('cy', d => d.y);
+
+        labels
+            .attr('x', d => d.x)
+            .attr('y', d => d.y);
+    });
+
+    graphSvg = svg;
+}
+
+function drag(simulation) {
+    function dragstarted(event) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+    }
+
+    function dragged(event) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+    }
+
+    function dragended(event) {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+    }
+
+    return d3.drag()
+        .on('start', dragstarted)
+        .on('drag', dragged)
+        .on('end', dragended);
+}
+
+function showNodeInfo(node) {
+    const infoPanel = document.getElementById('node-info');
+    infoPanel.classList.remove('d-none');
+
+    document.getElementById('node-name').textContent = node.name || node.screen_name;
+    document.getElementById('node-screen-name').textContent = node.screen_name;
+    document.getElementById('node-link').href = `https://twitter.com/${node.screen_name}`;
+    document.getElementById('node-depth').textContent = node.depth;
+    document.getElementById('node-followers').textContent = formatNumber(node.followers_count);
+}
+
+function resetGraphZoom() {
+    if (graphSvg && graphZoom) {
+        graphSvg.transition().duration(500).call(graphZoom.transform, d3.zoomIdentity);
+    }
+}
+
+// Reset graph when max nodes changes
+document.getElementById('max-nodes')?.addEventListener('change', () => {
+    graphLoaded = false;
+    loadGraph();
+});
 
 document.addEventListener('DOMContentLoaded', loadSearchDetails);
 </script>

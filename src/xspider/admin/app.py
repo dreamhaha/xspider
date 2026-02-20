@@ -56,9 +56,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 password="admin123",
             )
 
+    # Start background search worker
+    from xspider.admin.services.search_worker import start_search_worker, stop_search_worker
+
+    await start_search_worker(str(db.engine.url))
+
     yield
 
     # Cleanup
+    await stop_search_worker()
     await db.close()
     logger.info("Stopped xspider admin server")
 
@@ -103,6 +109,7 @@ def create_app() -> FastAPI:
     app.state.templates = templates
 
     # Import and include routers
+    from xspider.admin.routes.account_groups import router as account_groups_router
     from xspider.admin.routes.api_keys import router as api_keys_router
     from xspider.admin.routes.auth import router as auth_router
     from xspider.admin.routes.credits import router as credits_router
@@ -133,6 +140,7 @@ def create_app() -> FastAPI:
     app.include_router(api_keys_router, prefix="/api/auth", tags=["API Keys"])
     app.include_router(dashboard_router, prefix="/api/dashboard", tags=["Dashboard"])
     app.include_router(accounts_router, prefix="/api/accounts", tags=["Twitter Accounts"])
+    app.include_router(account_groups_router, prefix="/api/account-groups", tags=["Account Groups"])
     app.include_router(proxies_router, prefix="/api/proxies", tags=["Proxies"])
     app.include_router(users_router, prefix="/api/users", tags=["Users"])
     app.include_router(credits_router, prefix="/api/credits", tags=["Credits"])
