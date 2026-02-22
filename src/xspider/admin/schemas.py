@@ -5,13 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from xspider.admin.models import (
     AccountStatus,
     AuthenticityLabel,
     CommentStrategy,
     ContentStatus,
+    CrawlMode,
     DMStatus,
     InteractionMode,
     LLMProvider,
@@ -74,6 +75,7 @@ class APIKeyResponse(BaseModel):
 
     id: int
     key_id: str
+    key_prefix: str | None = None  # First 8 chars for display
     name: str
     is_active: bool
     created_at: datetime
@@ -409,9 +411,34 @@ class ProxyHealthCheck(BaseModel):
 class SearchCreate(BaseModel):
     """Create search task request."""
 
-    keywords: str = Field(..., min_length=1, max_length=500)
+    keywords: str | None = Field(None, max_length=500)  # Optional for seed-only mode
     industry: str | None = Field(None, max_length=100)
     crawl_depth: int = Field(default=0, ge=0, le=5)  # 0=仅种子, 1-5=关注深度
+
+    # Seed mode fields
+    seed_usernames: list[str] | None = None  # ["elonmusk", "vitalikbuterin"]
+    crawl_mode: CrawlMode = CrawlMode.KEYWORDS  # "keywords" | "seeds" | "mixed"
+
+    # Commenter crawling options (评论区抓取选项)
+    crawl_commenters: bool = False  # 是否抓取评论区互动账号
+    tweets_per_user: int = Field(default=10, ge=1, le=50)  # 每个用户抓取的推文数量
+    commenters_per_tweet: int = Field(default=50, ge=10, le=200)  # 每条推文抓取的评论者数量
+
+    @model_validator(mode="after")
+    def validate_search_params(self) -> "SearchCreate":
+        """Validate search parameters based on crawl mode."""
+        if self.crawl_mode == CrawlMode.KEYWORDS:
+            if not self.keywords or not self.keywords.strip():
+                raise ValueError("Keywords required for keyword search mode")
+        elif self.crawl_mode == CrawlMode.SEEDS:
+            if not self.seed_usernames or len(self.seed_usernames) == 0:
+                raise ValueError("Seed usernames required for seed mode")
+        elif self.crawl_mode == CrawlMode.MIXED:
+            has_keywords = self.keywords and self.keywords.strip()
+            has_seeds = self.seed_usernames and len(self.seed_usernames) > 0
+            if not (has_keywords or has_seeds):
+                raise ValueError("Keywords or seed usernames required for mixed mode")
+        return self
 
 
 class SearchResponse(BaseModel):
@@ -420,7 +447,7 @@ class SearchResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    keywords: str
+    keywords: str | None
     industry: str | None
     crawl_depth: int = 0
     seeds_found: int
@@ -430,6 +457,13 @@ class SearchResponse(BaseModel):
     error_message: str | None
     created_at: datetime
     completed_at: datetime | None
+    # Seed mode fields
+    seed_usernames: str | None = None  # JSON array stored as string
+    crawl_mode: CrawlMode = CrawlMode.KEYWORDS
+    # Commenter crawling options
+    crawl_commenters: bool = False
+    tweets_per_user: int = 10
+    commenters_per_tweet: int = 50
     # Progress tracking fields
     progress_percent: int = 0
     progress_stage: SearchStage | None = None
@@ -461,6 +495,12 @@ class InfluencerResponse(BaseModel):
     hidden_score: float
     is_relevant: bool
     relevance_score: int
+    # Seed mode fields
+    is_seed: bool = False
+    discovered_from: str | None = None
+    discovery_source: str = "keyword"  # seed, keyword, following, comment
+    # Extracted links from bio
+    extracted_links: str | None = None  # JSON array of extracted links
 
 
 class RelationshipResponse(BaseModel):
@@ -506,6 +546,61 @@ class SearchEstimate(BaseModel):
     breakdown: dict[str, int]
 
 
+class SeedUserInfo(BaseModel):
+    """Seed user resolution result (种子用户解析结果)."""
+
+    username: str
+    user_id: str | None = None
+    name: str | None = None
+    description: str | None = None
+    followers_count: int | None = None
+    following_count: int | None = None
+    profile_image_url: str | None = None
+    valid: bool = True
+    error: str | None = None
+
+
+class SearchPreview(BaseModel):
+    """Search preview with resolved seed users (搜索预览)."""
+
+    seed_users: list[SeedUserInfo]
+    valid_seeds: int
+    invalid_seeds: int
+    estimated_crawl_users: int
+    estimated_credits: int
+
+
+class SeedRecommendationRequest(BaseModel):
+    """Request for LLM-based seed recommendation (AI种子推荐请求)."""
+
+    prompt: str = Field(..., min_length=10, max_length=2000)
+    num_recommendations: int = Field(default=10, ge=3, le=100)
+    language: str = Field(default="en", pattern="^(en|zh|ja)$")
+
+
+class RecommendedSeedInfo(BaseModel):
+    """A recommended seed influencer from LLM."""
+
+    username: str
+    reason: str
+    estimated_followers: str
+    relevance_score: int = Field(ge=1, le=10)
+    category: str
+    verified: bool | None = None  # Whether verified to exist on Twitter
+
+
+class SeedRecommendationResponse(BaseModel):
+    """Response from LLM seed recommendation."""
+
+    model_config = ConfigDict(protected_namespaces=())
+
+    summary: str
+    recommendations: list[RecommendedSeedInfo]
+    model_used: str
+    tokens_used: int
+    credits_used: int = 0
+
+
 class SearchProgressResponse(BaseModel):
     """Search progress response for polling."""
 
@@ -521,6 +616,8 @@ class SearchProgressResponse(BaseModel):
     seeds_found: int
     users_crawled: int
     completed_at: datetime | None
+    # Seed mode fields
+    crawl_mode: CrawlMode = CrawlMode.KEYWORDS
 
 
 # ============================================================================

@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("packages.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-box-seam"></i> {{ _("packages.title") }}</h2>
+        <p class="text-muted">{{ _("packages.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addPackageModal">
+            <i class="bi bi-plus-lg"></i> {{ _("packages.add_package") }}
+        </button>
+    </div>
+</div>
+
+<!-- Packages Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>{{ _("packages.name") }}</th>
+                        <th>{{ _("packages.credits") }}</th>
+                        <th>{{ _("packages.price") }}</th>
+                        <th>{{ _("packages.duration_days") }}</th>
+                        <th>{{ _("packages.is_active") }}</th>
+                        <th>{{ _("packages.purchase_count") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="packages-table-body">
+                    <tr>
+                        <td colspan="8" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Package Modal -->
+<div class="modal fade" id="addPackageModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="package-modal-title">{{ _("packages.add_package") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return savePackage(event)">
+                <input type="hidden" id="package-id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("packages.name") }}</label>
+                        <input type="text" class="form-control" id="package-name" required>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">{{ _("packages.credits") }}</label>
+                                <input type="number" class="form-control" id="package-credits" min="1" required>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">{{ _("packages.price") }} ($)</label>
+                                <input type="number" class="form-control" id="package-price" min="0" step="0.01" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("packages.duration_days") }}</label>
+                        <input type="number" class="form-control" id="package-duration" min="1" value="30">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("packages.features") }}</label>
+                        <textarea class="form-control" id="package-features" rows="3" placeholder="One feature per line"></textarea>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="package-active" checked>
+                        <label class="form-check-label" for="package-active">{{ _("packages.is_active") }}</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("common.save") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadPackages() {
+    try {
+        const response = await fetch('/api/packages/');
+        if (!response.ok) throw new Error('Failed to load packages');
+
+        const data = await response.json();
+        renderPackages(data.packages || data);
+    } catch (error) {
+        console.error('Error loading packages:', error);
+        document.getElementById('packages-table-body').innerHTML =
+            `<tr><td colspan="8" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderPackages(packages) {
+    const tbody = document.getElementById('packages-table-body');
+
+    if (!packages || packages.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">${t('packages.no_packages')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = packages.map(p => {
+        const activeBadge = p.is_active
+            ? `<span class="badge bg-success">${t('status.active')}</span>`
+            : `<span class="badge bg-secondary">${t('status.inactive')}</span>`;
+
+        return `
+            <tr>
+                <td>${p.id}</td>
+                <td><strong>${escapeHtml(p.name)}</strong></td>
+                <td>${p.credits.toLocaleString()}</td>
+                <td>$${p.price.toFixed(2)}</td>
+                <td>${p.duration_days}</td>
+                <td>${activeBadge}</td>
+                <td>${p.purchase_count || 0}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="editPackage(${p.id})" title="${t('common.edit')}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="togglePackage(${p.id})" title="${t('groups.toggle_active')}">
+                            <i class="bi bi-toggle-${p.is_active ? 'on' : 'off'}"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deletePackage(${p.id})" title="${t('common.delete')}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function resetForm() {
+    document.getElementById('package-id').value = '';
+    document.getElementById('package-name').value = '';
+    document.getElementById('package-credits').value = '';
+    document.getElementById('package-price').value = '';
+    document.getElementById('package-duration').value = '30';
+    document.getElementById('package-features').value = '';
+    document.getElementById('package-active').checked = true;
+    document.getElementById('package-modal-title').textContent = t('packages.add_package');
+}
+
+async function editPackage(packageId) {
+    try {
+        const response = await fetch(`/api/packages/${packageId}`);
+        const pkg = await response.json();
+
+        document.getElementById('package-id').value = pkg.id;
+        document.getElementById('package-name').value = pkg.name;
+        document.getElementById('package-credits').value = pkg.credits;
+        document.getElementById('package-price').value = pkg.price;
+        document.getElementById('package-duration').value = pkg.duration_days;
+        document.getElementById('package-features').value = (pkg.features || []).join('\n');
+        document.getElementById('package-active').checked = pkg.is_active;
+        document.getElementById('package-modal-title').textContent = t('packages.edit_package');
+
+        new bootstrap.Modal(document.getElementById('addPackageModal')).show();
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function savePackage(event) {
+    event.preventDefault();
+
+    const packageId = document.getElementById('package-id').value;
+    const features = document.getElementById('package-features').value
+        .split('\n')
+        .map(f => f.trim())
+        .filter(f => f);
+
+    const data = {
+        name: document.getElementById('package-name').value,
+        credits: parseInt(document.getElementById('package-credits').value),
+        price: parseFloat(document.getElementById('package-price').value),
+        duration_days: parseInt(document.getElementById('package-duration').value),
+        features: features,
+        is_active: document.getElementById('package-active').checked
+    };
+
+    const url = packageId ? `/api/packages/${packageId}` : '/api/packages/';
+    const method = packageId ? 'PUT' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addPackageModal')).hide();
+            resetForm();
+            loadPackages();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function togglePackage(packageId) {
+    try {
+        const response = await fetch(`/api/packages/${packageId}/toggle`, { method: 'POST' });
+        if (response.ok) {
+            loadPackages();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function deletePackage(packageId) {
+    if (!confirm(t('packages.confirm_delete'))) return;
+
+    try {
+        const response = await fetch(`/api/packages/${packageId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadPackages();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+// Reset form when modal is hidden
+document.getElementById('addPackageModal').addEventListener('hidden.bs.modal', resetForm);
+
+document.addEventListener('DOMContentLoaded', loadPackages);
+</script>
+{% endblock %}

@@ -380,6 +380,57 @@ class ContentRewriteService:
 
         return True
 
+    async def generate_quick_rewrite(
+        self,
+        user_id: int,
+        content: str,
+    ) -> str:
+        """Generate a quick rewrite without saving (for preview)."""
+        prompt = f"""Rewrite the following content to be more engaging and shareable on Twitter.
+Keep the core message but make it more compelling.
+
+Original content:
+{content}
+
+Rewritten version:"""
+
+        system_prompt = "You are a social media expert who creates engaging Twitter content."
+
+        try:
+            rewritten, _ = await self._call_llm(system_prompt, prompt)
+            return rewritten.strip()
+        except Exception as e:
+            logger.error(f"Quick rewrite failed: {e}")
+            return f"[Error generating rewrite: {e}]"
+
+    async def create_rewrite(
+        self,
+        user_id: int,
+        original_content: str,
+        rewritten_content: str | None = None,
+        scheduled_at: datetime | None = None,
+        operating_account_id: int | None = None,
+    ) -> ContentRewrite:
+        """Create a content rewrite entry (manual)."""
+        status = ContentStatus.DRAFT
+        if scheduled_at:
+            status = ContentStatus.SCHEDULED
+
+        rewrite = ContentRewrite(
+            user_id=user_id,
+            operating_account_id=operating_account_id,
+            source_content=original_content,
+            rewritten_content=rewritten_content,
+            status=status,
+            scheduled_at=scheduled_at,
+        )
+
+        self.db.add(rewrite)
+        await self.db.commit()
+        await self.db.refresh(rewrite)
+
+        return rewrite
+
     async def update_engagement_stats(
         self,
         rewrite_id: int,

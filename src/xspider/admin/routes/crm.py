@@ -2,14 +2,136 @@
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class StageUpdateRequest(BaseModel):
+    """Request body for updating lead stage."""
+
+    stage: str
 
 from xspider.admin.auth import get_current_active_user, get_db_session
 from xspider.admin.models import AdminUser, LeadStage, IntentLabel
 from xspider.admin.services import CRMService
 
 router = APIRouter(prefix="/crm", tags=["CRM"])
+
+
+# ==================== Lead CRUD ====================
+
+
+@router.post("/leads/")
+async def create_lead(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    twitter_handle: str = Query(..., description="Twitter handle"),
+    source: str | None = None,
+    tags: list[str] | None = None,
+    notes: str | None = None,
+) -> dict[str, Any]:
+    """Create a new lead manually."""
+    service = CRMService(db)
+
+    try:
+        lead = await service.create_lead(
+            user_id=current_user.id,
+            twitter_handle=twitter_handle,
+            source=source,
+            tags=tags or [],
+            notes=notes,
+        )
+        return {
+            "success": True,
+            "lead": {
+                "id": lead.id,
+                "twitter_handle": lead.screen_name,
+                "stage": lead.stage.value,
+            },
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/leads/")
+async def list_leads(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    stage: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+) -> dict[str, Any]:
+    """List all leads."""
+    service = CRMService(db)
+
+    stage_filter = None
+    if stage:
+        try:
+            stage_filter = LeadStage(stage)
+        except ValueError:
+            pass
+
+    leads, total = await service.get_leads_by_stage(
+        user_id=current_user.id,
+        stage=stage_filter,
+        page=page,
+        page_size=page_size,
+    )
+
+    return {
+        "leads": [
+            {
+                "id": lead.id,
+                "twitter_handle": lead.screen_name,
+                "name": lead.display_name,
+                "profile_image_url": lead.profile_image_url,
+                "stage": lead.stage.value,
+                "tags": lead.tags or [],
+                "last_activity_at": lead.stage_updated_at.isoformat() if lead.stage_updated_at else None,
+                "created_at": lead.created_at.isoformat() if lead.created_at else None,
+            }
+            for lead in leads
+        ],
+        "total": total,
+    }
+
+
+@router.get("/leads/{lead_id}")
+async def get_lead_detail(
+    lead_id: int,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """Get detailed information about a lead."""
+    service = CRMService(db)
+
+    lead = await service.get_lead_by_id(lead_id, current_user.id)
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    activities = await service.get_lead_activities(lead_id, limit=10)
+
+    return {
+        "id": lead.id,
+        "twitter_handle": lead.screen_name,
+        "name": lead.display_name,
+        "profile_image_url": lead.profile_image_url,
+        "bio": lead.bio,
+        "followers_count": lead.followers_count,
+        "stage": lead.stage.value,
+        "tags": lead.tags or [],
+        "notes": lead.notes,
+        "activities": [
+            {
+                "id": a.id,
+                "type": a.activity_type,
+                "note": a.description,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in activities
+        ],
+    }
 
 
 @router.get("/kanban")
@@ -156,19 +278,32 @@ async def search_leads(
 @router.put("/leads/{lead_id}/stage")
 async def update_lead_stage(
     lead_id: int,
-    new_stage: LeadStage,
     current_user: Annotated[AdminUser, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    body: StageUpdateRequest | None = Body(None),
+    new_stage: LeadStage | None = None,
     notes: str | None = None,
 ) -> dict[str, Any]:
-    """Update a lead's stage."""
+    """Update a lead's stage. Accepts stage in body or query param."""
     service = CRMService(db)
+
+    # Get stage from body or query
+    stage_str = body.stage if body else None
+    if not stage_str and new_stage:
+        stage_str = new_stage.value
+    if not stage_str:
+        raise HTTPException(status_code=400, detail="Stage is required")
+
+    try:
+        stage = LeadStage(stage_str)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid stage: {stage_str}")
 
     try:
         lead = await service.update_lead_stage(
             lead_id=lead_id,
             user_id=current_user.id,
-            new_stage=new_stage,
+            new_stage=stage,
             notes=notes,
         )
         return {

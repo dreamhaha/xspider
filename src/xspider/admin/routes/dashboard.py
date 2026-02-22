@@ -240,10 +240,25 @@ async def get_recent_activity(
         .limit(limit)
     )
     for search in search_result.scalars():
+        # Handle both keyword and seed mode searches
+        if search.keywords:
+            desc = f"Started search for '{search.keywords[:50]}...'"
+        elif search.seed_usernames:
+            import json
+            try:
+                seeds = json.loads(search.seed_usernames)
+                desc = f"Started seed search: @{', @'.join(seeds[:3])}"
+                if len(seeds) > 3:
+                    desc += f" +{len(seeds) - 3} more"
+            except Exception:
+                desc = "Started seed search"
+        else:
+            desc = "Started search"
+
         activities.append(
             RecentActivity(
                 type="search",
-                description=f"Started search for '{search.keywords[:50]}...'",
+                description=desc,
                 user=search.user.username,
                 timestamp=search.created_at,
             )
@@ -286,7 +301,13 @@ async def get_recent_activity(
         )
 
     # Sort by timestamp and return top N
-    activities.sort(key=lambda x: x.timestamp, reverse=True)
+    # Normalize timestamps to handle mixed timezone-aware and naive datetimes
+    def normalize_timestamp(ts: datetime) -> datetime:
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts.astimezone(timezone.utc)
+
+    activities.sort(key=lambda x: normalize_timestamp(x.timestamp), reverse=True)
     return activities[:limit]
 
 

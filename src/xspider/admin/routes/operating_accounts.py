@@ -174,6 +174,62 @@ async def check_shadowban(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/batch-check-shadowban")
+async def batch_check_shadowban(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    account_ids: list[int] | None = Query(None, description="Account IDs to check"),
+) -> dict[str, Any]:
+    """Check shadowban status for multiple accounts.
+
+    If no account_ids provided, checks all active accounts.
+    Returns results for each account.
+    """
+    service = OperatingAccountService(db)
+    shadowban_service = ShadowbanCheckerService(db)
+
+    # Get accounts to check
+    if account_ids:
+        # Filter to user's accounts
+        accounts = []
+        for aid in account_ids:
+            acc = await service.get_operating_account(aid, current_user.id)
+            if acc:
+                accounts.append(acc)
+    else:
+        accounts = await service.list_operating_accounts(
+            user_id=current_user.id,
+            include_inactive=False,
+        )
+
+    results = []
+    for account in accounts:
+        try:
+            result = await shadowban_service.quick_check(account.id, current_user.id)
+            results.append({
+                "account_id": account.id,
+                "screen_name": account.screen_name,
+                "is_shadowbanned": result.is_shadowbanned,
+                "search_ban": result.search_ban,
+                "reply_ban": result.reply_ban,
+                "checked_at": result.checked_at.isoformat() if result.checked_at else None,
+                "success": True,
+            })
+        except Exception as e:
+            results.append({
+                "account_id": account.id,
+                "screen_name": account.screen_name,
+                "success": False,
+                "error": str(e),
+            })
+
+    return {
+        "total": len(results),
+        "results": results,
+        "shadowbanned_count": sum(1 for r in results if r.get("is_shadowbanned")),
+    }
+
+
 @router.get("/{account_id}/shadowban-status", response_model=ShadowbanCheckResult | None)
 async def get_shadowban_status(
     account_id: int,

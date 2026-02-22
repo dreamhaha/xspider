@@ -15,9 +15,70 @@
         <div class="card">
             <div class="card-body">
                 <form onsubmit="return submitSearch(event)">
+                    <!-- Search Mode Selection -->
                     <div class="mb-4">
+                        <label class="form-label"><strong>{{ _("searches.crawl_mode") }}</strong></label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="crawl_mode" id="mode-keywords" value="keywords" checked>
+                            <label class="btn btn-outline-primary" for="mode-keywords">
+                                <i class="bi bi-search"></i> {{ _("searches.mode_keywords") }}
+                            </label>
+
+                            <input type="radio" class="btn-check" name="crawl_mode" id="mode-seeds" value="seeds">
+                            <label class="btn btn-outline-primary" for="mode-seeds">
+                                <i class="bi bi-person-lines-fill"></i> {{ _("searches.mode_seeds") }}
+                            </label>
+
+                            <input type="radio" class="btn-check" name="crawl_mode" id="mode-mixed" value="mixed">
+                            <label class="btn btn-outline-primary" for="mode-mixed">
+                                <i class="bi bi-diagram-3"></i> {{ _("searches.mode_mixed") }}
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Seed Users Section -->
+                    <div class="mb-4" id="seed-users-section" style="display: none;">
+                        <!-- AI Recommendation -->
+                        <div class="card bg-light mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title mb-2">
+                                    <i class="bi bi-robot text-primary"></i> {{ _("searches.ai_recommend") }}
+                                </h6>
+                                <div class="mb-2">
+                                    <textarea class="form-control" id="ai-prompt" rows="2"
+                                        placeholder="{{ _('searches.ai_prompt_placeholder') }}"></textarea>
+                                </div>
+                                <div class="d-flex gap-2 align-items-center flex-wrap">
+                                    <div class="input-group input-group-sm" style="width: 140px;">
+                                        <span class="input-group-text">{{ _("searches.num_seeds") }}</span>
+                                        <input type="number" class="form-control" id="ai-num-recommendations" value="10" min="3" max="100">
+                                    </div>
+                                    <button type="button" class="btn btn-primary btn-sm" id="ai-recommend-btn" onclick="generateSeedRecommendations()">
+                                        <i class="bi bi-stars"></i> {{ _("searches.generate_seeds") }}
+                                    </button>
+                                    <small class="text-muted">{{ _("searches.ai_recommend_cost") }}</small>
+                                </div>
+                                <!-- AI Recommendations Results -->
+                                <div id="ai-recommendations" class="mt-3" style="display: none;"></div>
+                            </div>
+                        </div>
+
+                        <label class="form-label"><strong>{{ _("searches.seed_usernames") }}</strong></label>
+                        <textarea class="form-control" id="seed-usernames" rows="3"
+                            placeholder="{{ _('searches.seed_usernames_placeholder') }}"></textarea>
+                        <small class="text-muted">{{ _("searches.seed_usernames_hint") }}</small>
+
+                        <!-- Seed Preview Results -->
+                        <div id="seed-preview" class="mt-2"></div>
+                        <button type="button" class="btn btn-outline-secondary btn-sm mt-2" id="verify-users-btn" onclick="verifySeedUsers()">
+                            <i class="bi bi-check-circle"></i> {{ _("searches.verify_users") }}
+                        </button>
+                    </div>
+
+                    <!-- Keywords Section -->
+                    <div class="mb-4" id="keywords-section">
                         <label class="form-label"><strong>{{ _("searches.keywords") }}</strong></label>
-                        <textarea class="form-control" id="keywords" rows="3" required
+                        <textarea class="form-control" id="keywords" rows="3"
                             placeholder="{{ _('searches.keywords_placeholder') }}"></textarea>
                         <small class="text-muted">
                             {{ _("searches.industry_placeholder") }}
@@ -53,6 +114,40 @@
                             <option value="5">{{ _("searches.depth_5") }}</option>
                         </select>
                         <small class="text-muted">{{ _("searches.depth_hint") }}</small>
+                    </div>
+
+                    <!-- Crawl Commenters Option -->
+                    <div class="mb-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="crawl-commenters">
+                            <label class="form-check-label" for="crawl-commenters">
+                                <strong>{{ _("searches.crawl_commenters") }}</strong>
+                            </label>
+                        </div>
+                        <small class="text-muted d-block mt-1">{{ _("searches.crawl_commenters_hint") }}</small>
+
+                        <!-- Commenter options (hidden by default) -->
+                        <div id="commenter-options" class="mt-2 ms-4 d-none">
+                            <div class="row g-2">
+                                <div class="col-6">
+                                    <label class="form-label small">{{ _("searches.tweets_per_user") }}</label>
+                                    <select class="form-select form-select-sm" id="tweets-per-user">
+                                        <option value="5">5</option>
+                                        <option value="10" selected>10</option>
+                                        <option value="20">20</option>
+                                        <option value="30">30</option>
+                                    </select>
+                                </div>
+                                <div class="col-6">
+                                    <label class="form-label small">{{ _("searches.commenters_per_tweet") }}</label>
+                                    <select class="form-select form-select-sm" id="commenters-per-tweet">
+                                        <option value="20">20</option>
+                                        <option value="50" selected>50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="alert alert-info" id="estimate-info">
@@ -150,8 +245,291 @@
 
 {% block extra_js %}
 <script>
-// Load search history on page load
-document.addEventListener('DOMContentLoaded', loadSearchHistory);
+// Load search history and setup mode switching on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadSearchHistory();
+    setupModeSwitch();
+    setupCommenterToggle();
+});
+
+// Setup commenter options toggle
+function setupCommenterToggle() {
+    const checkbox = document.getElementById('crawl-commenters');
+    const options = document.getElementById('commenter-options');
+
+    checkbox.addEventListener('change', function() {
+        if (this.checked) {
+            options.classList.remove('d-none');
+        } else {
+            options.classList.add('d-none');
+        }
+    });
+}
+
+// Setup mode switching
+function setupModeSwitch() {
+    document.querySelectorAll('input[name="crawl_mode"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            const mode = this.value;
+            const seedSection = document.getElementById('seed-users-section');
+            const keywordsSection = document.getElementById('keywords-section');
+            const keywordsInput = document.getElementById('keywords');
+
+            if (mode === 'seeds') {
+                seedSection.style.display = 'block';
+                keywordsSection.style.display = 'none';
+                keywordsInput.removeAttribute('required');
+            } else if (mode === 'mixed') {
+                seedSection.style.display = 'block';
+                keywordsSection.style.display = 'block';
+                keywordsInput.removeAttribute('required');
+            } else {
+                // keywords mode
+                seedSection.style.display = 'none';
+                keywordsSection.style.display = 'block';
+                keywordsInput.setAttribute('required', 'required');
+            }
+        });
+    });
+}
+
+// Verify seed users via API
+async function verifySeedUsers() {
+    const textarea = document.getElementById('seed-usernames');
+    const btn = document.getElementById('verify-users-btn');
+    const usernames = textarea.value.split('\n').map(u => u.trim().replace('@', '')).filter(u => u);
+
+    if (usernames.length === 0) {
+        alert(t('searches.seed_usernames'));
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${t('searches.verifying_users')}`;
+
+    try {
+        const response = await fetch('/api/searches/resolve-users', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ usernames: usernames })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.detail || t('common.error'));
+            return;
+        }
+
+        const users = await response.json();
+        renderSeedPreview(users);
+    } catch (error) {
+        alert(t('common.error'));
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-check-circle"></i> ${t('searches.verify_users')}`;
+    }
+}
+
+// Render seed user preview
+function renderSeedPreview(users) {
+    const preview = document.getElementById('seed-preview');
+    if (users.length === 0) {
+        preview.innerHTML = '';
+        return;
+    }
+
+    const validCount = users.filter(u => u.valid).length;
+    const invalidCount = users.filter(u => !u.valid).length;
+
+    let html = `<div class="mt-2 mb-2"><small class="text-muted">
+        ${t('searches.user_verified')}: ${validCount} / ${users.length}
+        ${invalidCount > 0 ? ` | <span class="text-danger">${t('searches.invalid_user')}: ${invalidCount}</span>` : ''}
+    </small></div>`;
+
+    html += '<div class="list-group">';
+    users.forEach(user => {
+        if (user.valid) {
+            html += `
+                <div class="list-group-item list-group-item-action d-flex align-items-center py-2">
+                    <img src="${user.profile_image_url || 'https://abs.twimg.com/sticky/default_profile_images/default_profile_normal.png'}"
+                         class="rounded-circle me-2" width="32" height="32" alt="${user.username}">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center">
+                            <strong>@${user.username}</strong>
+                            <i class="bi bi-check-circle-fill text-success ms-2"></i>
+                        </div>
+                        <small class="text-muted">${user.name || ''} | ${formatNumber(user.followers_count || 0)} followers</small>
+                    </div>
+                </div>
+            `;
+        } else {
+            html += `
+                <div class="list-group-item list-group-item-action d-flex align-items-center py-2 bg-light">
+                    <i class="bi bi-x-circle-fill text-danger me-2"></i>
+                    <div class="flex-grow-1">
+                        <strong class="text-muted">@${user.username}</strong>
+                        <small class="text-danger ms-2">${user.error || t('searches.invalid_user')}</small>
+                    </div>
+                </div>
+            `;
+        }
+    });
+    html += '</div>';
+
+    preview.innerHTML = html;
+}
+
+// Format number with K/M suffix
+function formatNumber(num) {
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
+    }
+    return num.toString();
+}
+
+// Generate AI seed recommendations
+async function generateSeedRecommendations() {
+    const promptInput = document.getElementById('ai-prompt');
+    const btn = document.getElementById('ai-recommend-btn');
+    const resultsDiv = document.getElementById('ai-recommendations');
+    const prompt = promptInput.value.trim();
+
+    if (!prompt || prompt.length < 10) {
+        alert(t('searches.ai_prompt_required'));
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${t('searches.generating')}`;
+    resultsDiv.style.display = 'none';
+
+    try {
+        // Detect language from browser or current locale
+        const lang = document.documentElement.lang || 'en';
+
+        const numRecommendations = parseInt(document.getElementById('ai-num-recommendations').value) || 10;
+
+        const response = await fetch('/api/searches/recommend-seeds', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                prompt: prompt,
+                num_recommendations: Math.min(Math.max(numRecommendations, 3), 100),
+                language: lang.substring(0, 2)
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            alert(error.detail || t('common.error'));
+            return;
+        }
+
+        const data = await response.json();
+        renderAIRecommendations(data);
+
+        // Update credits display
+        const meResponse = await fetch('/api/auth/me');
+        if (meResponse.ok) {
+            const user = await meResponse.json();
+            document.getElementById('current-credits').textContent = user.credits;
+        }
+
+    } catch (error) {
+        console.error('AI recommendation error:', error);
+        alert(t('common.error'));
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-stars"></i> ${t('searches.generate_seeds')}`;
+    }
+}
+
+// Render AI recommendations
+function renderAIRecommendations(data) {
+    const resultsDiv = document.getElementById('ai-recommendations');
+
+    let html = `
+        <div class="mb-2">
+            <small class="text-muted">${data.summary}</small>
+            <span class="badge bg-secondary ms-2">${data.model_used}</span>
+        </div>
+        <div class="list-group list-group-flush">
+    `;
+
+    data.recommendations.forEach(rec => {
+        const scoreColor = rec.relevance_score >= 8 ? 'success' : (rec.relevance_score >= 5 ? 'warning' : 'secondary');
+        html += `
+            <div class="list-group-item list-group-item-action d-flex align-items-start p-2">
+                <div class="form-check me-2">
+                    <input class="form-check-input ai-seed-checkbox" type="checkbox"
+                           value="${rec.username}" id="ai-seed-${rec.username}" checked>
+                </div>
+                <div class="flex-grow-1">
+                    <div class="d-flex align-items-center">
+                        <strong>@${rec.username}</strong>
+                        <span class="badge bg-${scoreColor} ms-2">${rec.relevance_score}/10</span>
+                        <span class="badge bg-info ms-1">${rec.category}</span>
+                        <small class="text-muted ms-auto">${rec.estimated_followers}</small>
+                    </div>
+                    <small class="text-muted">${rec.reason}</small>
+                </div>
+            </div>
+        `;
+    });
+
+    html += `
+        </div>
+        <div class="mt-2 d-flex gap-2">
+            <button type="button" class="btn btn-success btn-sm" onclick="addSelectedSeeds()">
+                <i class="bi bi-plus-circle"></i> ${t('searches.add_selected')}
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectAllSeeds(true)">
+                ${t('common.all')}
+            </button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectAllSeeds(false)">
+                ${t('common.none')}
+            </button>
+        </div>
+    `;
+
+    resultsDiv.innerHTML = html;
+    resultsDiv.style.display = 'block';
+}
+
+// Select/deselect all AI seed checkboxes
+function selectAllSeeds(select) {
+    document.querySelectorAll('.ai-seed-checkbox').forEach(cb => {
+        cb.checked = select;
+    });
+}
+
+// Add selected AI recommendations to seed usernames
+function addSelectedSeeds() {
+    const seedTextarea = document.getElementById('seed-usernames');
+    const existingSeeds = seedTextarea.value.trim();
+    const existingLines = existingSeeds ? existingSeeds.split('\n').map(s => s.trim().toLowerCase().replace('@', '')) : [];
+
+    const selectedSeeds = [];
+    document.querySelectorAll('.ai-seed-checkbox:checked').forEach(cb => {
+        const username = cb.value.toLowerCase();
+        if (!existingLines.includes(username)) {
+            selectedSeeds.push(cb.value);
+        }
+    });
+
+    if (selectedSeeds.length > 0) {
+        if (existingSeeds) {
+            seedTextarea.value = existingSeeds + '\n' + selectedSeeds.join('\n');
+        } else {
+            seedTextarea.value = selectedSeeds.join('\n');
+        }
+    }
+
+    // Hide AI recommendations after adding
+    document.getElementById('ai-recommendations').style.display = 'none';
+}
 
 async function loadSearchHistory() {
     try {
@@ -179,15 +557,63 @@ function renderSearchHistory(searches) {
     tbody.innerHTML = searches.map(search => {
         const statusBadge = getStatusBadge(search.status);
         const createdAt = new Date(search.created_at).toLocaleString();
-        const keywords = search.keywords.length > 50
-            ? search.keywords.substring(0, 50) + '...'
-            : search.keywords;
+
+        // Handle display based on crawl mode
+        let displayHtml = '';
+        if (search.keywords && search.keywords.trim()) {
+            // Keywords mode - show keywords
+            const keywords = search.keywords.length > 50
+                ? search.keywords.substring(0, 50) + '...'
+                : search.keywords;
+            displayHtml = `<span title="${search.keywords}">${keywords}</span>`;
+        } else if (search.seed_usernames) {
+            // Seeds mode - show seed usernames with links
+            try {
+                const seeds = JSON.parse(search.seed_usernames);
+                const maxDisplay = 3;
+                const displaySeeds = seeds.slice(0, maxDisplay);
+                const remainingCount = seeds.length - maxDisplay;
+
+                // Create links for displayed seeds
+                const seedLinks = displaySeeds.map(username =>
+                    `<a href="https://twitter.com/${username}" target="_blank" class="text-decoration-none">@${username}</a>`
+                ).join(', ');
+
+                if (remainingCount > 0) {
+                    // Has more seeds - show expandable
+                    const allSeedLinks = seeds.map(username =>
+                        `<a href="https://twitter.com/${username}" target="_blank" class="text-decoration-none">@${username}</a>`
+                    ).join(', ');
+
+                    displayHtml = `
+                        <span class="seed-preview-${search.id}">
+                            ${seedLinks}
+                            <a href="javascript:void(0)" class="text-primary ms-1" onclick="toggleSeedList(${search.id})">
+                                +${remainingCount} ${t('common.more')}
+                            </a>
+                        </span>
+                        <span class="seed-full-${search.id} d-none">
+                            ${allSeedLinks}
+                            <a href="javascript:void(0)" class="text-muted ms-1" onclick="toggleSeedList(${search.id})">
+                                [${t('common.collapse')}]
+                            </a>
+                        </span>
+                    `;
+                } else {
+                    displayHtml = seedLinks;
+                }
+            } catch (e) {
+                displayHtml = `<span class="badge bg-info">${t('searches.mode_seeds')}</span>`;
+            }
+        } else {
+            displayHtml = '-';
+        }
 
         const canCancel = search.status === 'pending' || search.status === 'running';
         return `
             <tr>
                 <td>${search.id}</td>
-                <td title="${search.keywords}">${keywords}</td>
+                <td>${displayHtml}</td>
                 <td>${statusBadge}</td>
                 <td>${search.seeds_found}</td>
                 <td>${search.credits_used}</td>
@@ -210,6 +636,16 @@ function renderSearchHistory(searches) {
             </tr>
         `;
     }).join('');
+}
+
+// Toggle seed list expansion
+function toggleSeedList(searchId) {
+    const preview = document.querySelector(`.seed-preview-${searchId}`);
+    const full = document.querySelector(`.seed-full-${searchId}`);
+    if (preview && full) {
+        preview.classList.toggle('d-none');
+        full.classList.toggle('d-none');
+    }
 }
 
 function getStatusBadge(status) {
@@ -257,20 +693,56 @@ async function cancelSearch(searchId, creditsUsed) {
 }
 
 async function estimateCost() {
+    const crawl_mode = document.querySelector('input[name="crawl_mode"]:checked').value;
     const keywords = document.getElementById('keywords').value;
     const industry = document.getElementById('industry').value;
     const crawl_depth = parseInt(document.getElementById('crawl-depth').value);
 
-    if (!keywords.trim()) {
+    // Get seed usernames if applicable
+    let seed_usernames = null;
+    if (crawl_mode === 'seeds' || crawl_mode === 'mixed') {
+        const seedText = document.getElementById('seed-usernames').value;
+        if (seedText.trim()) {
+            seed_usernames = seedText.split('\n').map(u => u.trim().replace('@', '')).filter(u => u);
+        }
+    }
+
+    // Basic validation
+    if (crawl_mode === 'keywords' && !keywords.trim()) {
         alert(t('searches.keywords'));
+        return;
+    }
+    if (crawl_mode === 'seeds' && (!seed_usernames || seed_usernames.length === 0)) {
+        alert(t('searches.seed_usernames'));
         return;
     }
 
     try {
+        // Get commenter options
+        const crawl_commenters = document.getElementById('crawl-commenters').checked;
+        const tweets_per_user = parseInt(document.getElementById('tweets-per-user').value);
+        const commenters_per_tweet = parseInt(document.getElementById('commenters-per-tweet').value);
+
+        const requestBody = {
+            crawl_mode,
+            crawl_depth,
+            crawl_commenters,
+            tweets_per_user,
+            commenters_per_tweet,
+            industry: industry || null
+        };
+
+        if (keywords.trim()) {
+            requestBody.keywords = keywords;
+        }
+        if (seed_usernames && seed_usernames.length > 0) {
+            requestBody.seed_usernames = seed_usernames;
+        }
+
         const response = await fetch('/api/searches/estimate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keywords, industry, crawl_depth })
+            body: JSON.stringify(requestBody)
         });
 
         if (response.ok) {
@@ -292,19 +764,67 @@ async function estimateCost() {
 async function submitSearch(event) {
     event.preventDefault();
 
+    const crawl_mode = document.querySelector('input[name="crawl_mode"]:checked').value;
     const keywords = document.getElementById('keywords').value;
     const industry = document.getElementById('industry').value;
     const crawl_depth = parseInt(document.getElementById('crawl-depth').value);
     const submitBtn = document.getElementById('submit-btn');
 
+    // Get seed usernames if in seeds or mixed mode
+    let seed_usernames = null;
+    if (crawl_mode === 'seeds' || crawl_mode === 'mixed') {
+        const seedText = document.getElementById('seed-usernames').value;
+        if (seedText.trim()) {
+            seed_usernames = seedText.split('\n').map(u => u.trim().replace('@', '')).filter(u => u);
+        }
+    }
+
+    // Validation based on mode
+    if (crawl_mode === 'keywords' && !keywords.trim()) {
+        alert(t('searches.keywords'));
+        return false;
+    }
+    if (crawl_mode === 'seeds' && (!seed_usernames || seed_usernames.length === 0)) {
+        alert(t('searches.seed_usernames'));
+        return false;
+    }
+    if (crawl_mode === 'mixed' && !keywords.trim() && (!seed_usernames || seed_usernames.length === 0)) {
+        alert(t('searches.keywords') + ' / ' + t('searches.seed_usernames'));
+        return false;
+    }
+
     submitBtn.disabled = true;
     submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> ${t('common.loading')}`;
 
     try {
+        // Get commenter options
+        const crawl_commenters = document.getElementById('crawl-commenters').checked;
+        const tweets_per_user = parseInt(document.getElementById('tweets-per-user').value);
+        const commenters_per_tweet = parseInt(document.getElementById('commenters-per-tweet').value);
+
+        const requestBody = {
+            crawl_mode,
+            crawl_depth,
+            crawl_commenters,
+            tweets_per_user,
+            commenters_per_tweet,
+            industry: industry || null
+        };
+
+        // Add keywords if provided
+        if (keywords.trim()) {
+            requestBody.keywords = keywords;
+        }
+
+        // Add seed_usernames if provided
+        if (seed_usernames && seed_usernames.length > 0) {
+            requestBody.seed_usernames = seed_usernames;
+        }
+
         const response = await fetch('/api/searches/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keywords, industry, crawl_depth })
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {

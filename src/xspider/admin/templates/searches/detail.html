@@ -2,6 +2,15 @@
 
 {% block title %}{{ _("searches.view_results") }} - xspider{% endblock %}
 
+{% block extra_css %}
+<style>
+.bg-purple {
+    background-color: #6f42c1 !important;
+    color: white;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="row mb-4">
     <div class="col">
@@ -61,7 +70,7 @@
             <div class="card-body">
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>{{ _("searches.keywords") }}:</strong> <span id="search-keywords">-</span></p>
+                        <p><strong id="search-source-label">{{ _("searches.keywords") }}:</strong> <span id="search-keywords">-</span></p>
                         <p><strong>{{ _("searches.industry") }}:</strong> <span id="search-industry">-</span></p>
                         <p><strong>{{ _("searches.status") }}:</strong> <span id="search-status">-</span></p>
                     </div>
@@ -237,6 +246,7 @@ const stageTranslations = {
     'initializing': '{{ _("searches.stage_initializing") }}',
     'searching_seeds': '{{ _("searches.stage_searching_seeds") }}',
     'crawling_followers': '{{ _("searches.stage_crawling_followers") }}',
+    'crawling_commenters': '{{ _("searches.stage_crawling_commenters") }}',
     'building_graph': '{{ _("searches.stage_building_graph") }}',
     'calculating_pagerank': '{{ _("searches.stage_calculating_pagerank") }}',
     'ai_analyzing': '{{ _("searches.stage_ai_analyzing") }}',
@@ -252,8 +262,9 @@ async function loadSearchDetails() {
         renderSearchInfo(data);
         renderInfluencers(data.influencers, data.relationships);
 
-        // Store for cancel
-        searchStartTime = new Date(data.created_at);
+        // Store for cancel - ensure UTC parsing
+        const createdAtStr = data.created_at.endsWith('Z') ? data.created_at : data.created_at + 'Z';
+        searchStartTime = new Date(createdAtStr);
         currentCreditsUsed = data.credits_used;
 
         // Start polling if search is running
@@ -321,22 +332,32 @@ function updateProgress(data) {
 function startElapsedTimeCounter() {
     if (elapsedTimeInterval) return;
 
-    // Use server time difference to avoid timezone/clock sync issues
-    let serverTimeOffset = 0;
-    let lastProgressUpdate = null;
+    // Track the start time locally - once set, never changes
+    let localStartTime = null;
+    let initialServerElapsed = 0;
+
+    // Parse ISO timestamp, ensuring UTC interpretation
+    const parseTimestamp = (ts) => {
+        if (!ts) return null;
+        // Add 'Z' suffix if not present to ensure UTC parsing
+        const isoStr = ts.endsWith('Z') ? ts : ts + 'Z';
+        return new Date(isoStr).getTime();
+    };
 
     const updateElapsedTime = () => {
-        if (!searchStartTime) return;
+        let elapsed = 0;
 
-        // Calculate elapsed based on last known server state + local time since then
-        let elapsed;
-        if (lastProgressUpdate) {
-            const localElapsedSinceUpdate = Math.floor((Date.now() - lastProgressUpdate.localTime) / 1000);
-            elapsed = lastProgressUpdate.serverElapsed + localElapsedSinceUpdate;
+        if (localStartTime) {
+            // Simple calculation: initial server elapsed + local time since we started tracking
+            const localElapsed = Math.floor((Date.now() - localStartTime) / 1000);
+            elapsed = initialServerElapsed + localElapsed;
         } else {
-            // Fallback: just show seconds since page load
+            // Fallback: seconds since page load
             elapsed = Math.floor((Date.now() - pageLoadTime) / 1000);
         }
+
+        // Ensure non-negative
+        elapsed = Math.max(0, elapsed);
 
         const minutes = Math.floor(elapsed / 60);
         const seconds = elapsed % 60;
@@ -347,15 +368,26 @@ function startElapsedTimeCounter() {
             '{{ _("searches.elapsed_time") }}: ' + timeStr;
     };
 
-    // Update elapsed time from server response
+    // Initialize elapsed time from server response (called only once on first load)
     window.updateServerElapsed = (createdAt, progressUpdatedAt) => {
-        if (createdAt && progressUpdatedAt) {
-            const created = new Date(createdAt).getTime();
-            const updated = new Date(progressUpdatedAt).getTime();
-            lastProgressUpdate = {
-                serverElapsed: Math.floor((updated - created) / 1000),
-                localTime: Date.now()
-            };
+        // Only initialize once
+        if (localStartTime !== null) return;
+
+        if (createdAt) {
+            const created = parseTimestamp(createdAt);
+            const now = Date.now();
+
+            if (created) {
+                // Calculate how much time has already elapsed on the server
+                if (progressUpdatedAt) {
+                    const updated = parseTimestamp(progressUpdatedAt);
+                    initialServerElapsed = Math.floor((updated - created) / 1000);
+                } else {
+                    initialServerElapsed = 0;
+                }
+                // Mark when we started local tracking
+                localStartTime = now;
+            }
         }
     };
 
@@ -441,8 +473,69 @@ function stopProgressPolling() {
     }
 }
 
+// Toggle seed list expansion in detail view
+function toggleDetailSeedList() {
+    const preview = document.getElementById('seed-preview');
+    const full = document.getElementById('seed-full');
+    if (preview && full) {
+        preview.classList.toggle('d-none');
+        full.classList.toggle('d-none');
+    }
+}
+
 function renderSearchInfo(search) {
-    document.getElementById('search-keywords').textContent = search.keywords;
+    const keywordsEl = document.getElementById('search-keywords');
+    const labelEl = document.getElementById('search-source-label');
+
+    // Render based on crawl mode
+    if (search.keywords && search.keywords.trim()) {
+        // Keywords mode
+        labelEl.textContent = t('searches.keywords') + ':';
+        keywordsEl.textContent = search.keywords;
+    } else if (search.seed_usernames) {
+        // Seeds mode - show as links
+        labelEl.textContent = t('searches.seed_usernames') + ':';
+        try {
+            const seeds = JSON.parse(search.seed_usernames);
+            const maxDisplay = 3;
+            const displaySeeds = seeds.slice(0, maxDisplay);
+            const remainingCount = seeds.length - maxDisplay;
+
+            // Create links for displayed seeds
+            const seedLinks = displaySeeds.map(username =>
+                `<a href="https://twitter.com/${username}" target="_blank" class="text-decoration-none">@${username}</a>`
+            ).join(', ');
+
+            if (remainingCount > 0) {
+                // Has more seeds - show expandable
+                const allSeedLinks = seeds.map(username =>
+                    `<a href="https://twitter.com/${username}" target="_blank" class="text-decoration-none">@${username}</a>`
+                ).join(', ');
+
+                keywordsEl.innerHTML = `
+                    <span id="seed-preview">
+                        ${seedLinks}
+                        <a href="javascript:void(0)" class="text-primary ms-1" onclick="toggleDetailSeedList()">
+                            +${remainingCount} ${t('common.more')}
+                        </a>
+                    </span>
+                    <span id="seed-full" class="d-none">
+                        ${allSeedLinks}
+                        <a href="javascript:void(0)" class="text-muted ms-1" onclick="toggleDetailSeedList()">
+                            [${t('common.collapse')}]
+                        </a>
+                    </span>
+                `;
+            } else {
+                keywordsEl.innerHTML = seedLinks;
+            }
+        } catch (e) {
+            keywordsEl.innerHTML = `<span class="badge bg-info">${t('searches.mode_seeds')}</span>`;
+        }
+    } else {
+        keywordsEl.textContent = '-';
+    }
+
     document.getElementById('search-industry').textContent = search.industry || '-';
     document.getElementById('search-status').innerHTML = getStatusBadge(search.status);
     document.getElementById('search-seeds').textContent = search.seeds_found;
@@ -472,6 +565,7 @@ function renderInfluencers(influencers, relationships) {
             : '<span class="badge bg-secondary">N/A</span>';
 
         const depthBadge = getDepthBadge(inf.depth);
+        const sourceBadge = getSourceBadge(inf.discovery_source);
 
         return `
             <tr>
@@ -480,6 +574,7 @@ function renderInfluencers(influencers, relationships) {
                     <a href="https://twitter.com/${inf.screen_name}" target="_blank" class="text-decoration-none">
                         <strong>@${inf.screen_name}</strong>
                     </a>
+                    ${sourceBadge}
                     ${inf.name ? `<br><small class="text-muted">${inf.name}</small>` : ''}
                 </td>
                 <td>${depthBadge}</td>
@@ -505,6 +600,14 @@ function getDepthBadge(depth) {
     };
     const color = colors[depth] || 'bg-info';
     return `<span class="badge ${color}">${depth}</span>`;
+}
+
+function getSourceBadge(source) {
+    // Only show badge for comment-discovered users
+    if (source === 'comment') {
+        return `<span class="badge bg-purple ms-1" title="${t('searches.source_comment')}"><i class="bi bi-chat-dots"></i></span>`;
+    }
+    return '';
 }
 
 function getStatusBadge(status) {

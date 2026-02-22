@@ -329,3 +329,213 @@ async def monitor_detail_page(
         "monitors/detail.html",
         get_template_context(request, user, influencer_id=influencer_id),
     )
+
+
+# ============ Operating Accounts ============
+
+@router.get("/admin/operating-accounts", response_class=HTMLResponse)
+async def operating_accounts_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render operating accounts management page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "operating-accounts/list.html",
+        get_template_context(request, user),
+    )
+
+
+@router.get("/admin/operating-accounts/{account_id}", response_class=HTMLResponse)
+async def operating_account_detail_page(
+    request: Request,
+    account_id: int,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render operating account detail page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "operating-accounts/detail.html",
+        get_template_context(request, user, account_id=account_id),
+    )
+
+
+# ============ CRM ============
+
+@router.get("/admin/crm", response_class=HTMLResponse)
+async def crm_kanban_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render CRM kanban page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "crm/kanban.html",
+        get_template_context(request, user),
+    )
+
+
+@router.get("/admin/crm/leads", response_class=HTMLResponse)
+async def crm_leads_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render CRM leads list page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "crm/leads.html",
+        get_template_context(request, user),
+    )
+
+
+# ============ Analytics ============
+
+@router.get("/admin/analytics", response_class=HTMLResponse)
+async def analytics_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render analytics overview page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "analytics/index.html",
+        get_template_context(request, user),
+    )
+
+
+# ============ Content Rewrite ============
+
+@router.get("/admin/content-rewrite", response_class=HTMLResponse)
+async def content_rewrite_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render content rewrite page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "content-rewrite/list.html",
+        get_template_context(request, user),
+    )
+
+
+# ============ Smart Interaction ============
+
+@router.get("/admin/smart-interaction", response_class=HTMLResponse)
+async def smart_interaction_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render smart interaction page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "smart-interaction/list.html",
+        get_template_context(request, user),
+    )
+
+
+# ============ AI Openers ============
+
+@router.get("/admin/openers", response_class=HTMLResponse)
+async def openers_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render AI openers page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "openers/list.html",
+        get_template_context(request, user),
+    )
+
+
+# ============ Targeted Comment ============
+
+@router.get("/admin/targeted-comment", response_class=HTMLResponse)
+async def targeted_comment_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render targeted comment page."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "targeted-comment/list.html",
+        get_template_context(request, user),
+    )
+
+
+# ============ Packages (Admin) ============
+
+@router.get("/admin/packages", response_class=HTMLResponse)
+async def packages_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render packages management page (admin only)."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user.role != UserRole.ADMIN:
+        return RedirectResponse(url="/admin/dashboard", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "packages/list.html",
+        get_template_context(request, user),
+    )
+
+
+# ============ Webhooks (Admin) ============
+
+@router.get("/admin/webhooks", response_class=HTMLResponse)
+async def webhooks_page(
+    request: Request,
+    db: AsyncSession = Depends(get_db_session),
+) -> HTMLResponse:
+    """Render webhooks management page (admin only)."""
+    user = await get_user_from_db(request, db)
+    if not user:
+        return RedirectResponse(url="/login", status_code=302)
+    if user.role != UserRole.ADMIN:
+        return RedirectResponse(url="/admin/dashboard", status_code=302)
+
+    templates = request.app.state.templates
+    return templates.TemplateResponse(
+        "webhooks/list.html",
+        get_template_context(request, user),
+    )

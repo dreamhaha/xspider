@@ -32,7 +32,9 @@ class EndpointType(str, Enum):
     UNFAVORITE_TWEET = "UnfavoriteTweet"
     CREATE_RETWEET = "CreateRetweet"
     DELETE_RETWEET = "DeleteRetweet"
-    SEND_DM = "SendDM"  # Direct Message
+    SEND_DM = "SendDM"  # Direct Message (REST API, not GraphQL)
+    FOLLOW_USER = "FollowUser"
+    UNFOLLOW_USER = "UnfollowUser"
 
 
 @dataclass(frozen=True)
@@ -512,3 +514,107 @@ def is_mutation_endpoint(endpoint_type: EndpointType) -> bool:
     """Check if an endpoint type is a mutation (POST) endpoint."""
     endpoint = GRAPHQL_ENDPOINTS.get(endpoint_type)
     return endpoint is not None and endpoint.method == "POST"
+
+
+# ============================================================================
+# REST API Endpoints (non-GraphQL)
+# ============================================================================
+
+REST_API_BASE = "https://x.com/i/api"
+
+
+class RestEndpoints:
+    """REST API endpoint URLs (non-GraphQL)."""
+
+    # Direct Messages
+    DM_NEW = f"{REST_API_BASE}/1.1/dm/new2.json"
+    DM_CONVERSATION = f"{REST_API_BASE}/1.1/dm/conversation"
+    DM_INBOX = f"{REST_API_BASE}/1.1/dm/inbox_initial_state.json"
+
+    # User Actions
+    FOLLOW = f"{REST_API_BASE}/1.1/friendships/create.json"
+    UNFOLLOW = f"{REST_API_BASE}/1.1/friendships/destroy.json"
+
+
+class DMRequestBuilder:
+    """Builds request payloads for Direct Message operations."""
+
+    @classmethod
+    def build_send_dm_payload(
+        cls,
+        recipient_id: str,
+        text: str,
+        media_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Build payload for sending a direct message.
+
+        Args:
+            recipient_id: Twitter user ID of the recipient
+            text: Message text content
+            media_id: Optional media ID to attach
+
+        Returns:
+            Dict payload for POST request body
+        """
+        payload: dict[str, Any] = {
+            "conversation_id": f"{recipient_id}-{recipient_id}",  # Will be replaced with actual user ID
+            "recipient_ids": False,
+            "request_id": cls._generate_request_id(),
+            "text": text,
+            "cards_platform": "Web-12",
+            "include_cards": 1,
+            "include_quote_count": True,
+            "dm_users": False,
+        }
+
+        if media_id:
+            payload["media_id"] = media_id
+
+        return payload
+
+    @classmethod
+    def build_send_dm_to_user_payload(
+        cls,
+        recipient_id: str,
+        sender_id: str,
+        text: str,
+        media_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Build payload for sending a DM with sender context.
+
+        Args:
+            recipient_id: Twitter user ID of the recipient
+            sender_id: Twitter user ID of the sender (current user)
+            text: Message text content
+            media_id: Optional media ID to attach
+
+        Returns:
+            Dict payload for POST request body
+        """
+        import uuid
+
+        # Conversation ID is sorted concatenation of user IDs
+        ids = sorted([recipient_id, sender_id])
+        conversation_id = f"{ids[0]}-{ids[1]}"
+
+        payload: dict[str, Any] = {
+            "conversation_id": conversation_id,
+            "recipient_ids": recipient_id,
+            "request_id": str(uuid.uuid4()),
+            "text": text,
+            "cards_platform": "Web-12",
+            "include_cards": 1,
+            "include_quote_count": True,
+            "dm_users": False,
+        }
+
+        if media_id:
+            payload["media_id"] = media_id
+
+        return payload
+
+    @staticmethod
+    def _generate_request_id() -> str:
+        """Generate a unique request ID."""
+        import uuid
+        return str(uuid.uuid4())

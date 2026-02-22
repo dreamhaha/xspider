@@ -23,6 +23,179 @@ from xspider.admin.services.smart_interaction_service import SmartInteractionSer
 router = APIRouter(prefix="/smart-interaction", tags=["Smart Interaction"])
 
 
+# ==================== Main List Endpoint (with status filter) ====================
+
+
+@router.get("/")
+async def list_interactions(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    status: str | None = Query(None, description="Filter by status (pending, executed, rejected)"),
+    operating_account_id: int | None = Query(None),
+) -> dict[str, Any]:
+    """List interactions with optional status filter."""
+    service = SmartInteractionService(db)
+
+    if status == "pending":
+        interactions = await service.get_pending_interactions(
+            user_id=current_user.id,
+            operating_account_id=operating_account_id,
+        )
+        return {
+            "interactions": [
+                {
+                    "id": i.id,
+                    "type": "reply",
+                    "target_user": i.target_screen_name,
+                    "content": i.selected_comment or i.supplement_comment,
+                    "status": "pending",
+                    "created_at": i.created_at.isoformat() if i.created_at else None,
+                }
+                for i in interactions
+            ]
+        }
+    else:
+        interactions, total = await service.get_interaction_history(
+            user_id=current_user.id,
+            operating_account_id=operating_account_id,
+            limit=100,
+            offset=0,
+        )
+
+        # Filter by status if provided
+        if status:
+            status_list = [s.strip() for s in status.split(",")]
+            filtered = []
+            for i in interactions:
+                i_status = "executed" if i.is_executed else ("approved" if i.is_approved else "rejected")
+                if i_status in status_list:
+                    filtered.append(i)
+            interactions = filtered
+
+        return {
+            "interactions": [
+                {
+                    "id": i.id,
+                    "type": "reply",
+                    "target_user": i.target_screen_name,
+                    "content": i.selected_comment,
+                    "status": "executed" if i.is_executed else ("approved" if i.is_approved else "rejected"),
+                    "created_at": i.created_at.isoformat() if i.created_at else None,
+                }
+                for i in interactions
+            ]
+        }
+
+
+# ==================== Follow List Endpoints ====================
+
+
+@router.get("/follow-list")
+async def get_follow_list(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    operating_account_id: int | None = Query(None),
+) -> dict[str, Any]:
+    """Get the follow list (alias for watchlist)."""
+    service = SmartInteractionService(db)
+
+    watchlist = await service.list_watchlist(
+        user_id=current_user.id,
+        operating_account_id=operating_account_id,
+        include_inactive=True,
+    )
+
+    return {
+        "users": [
+            {
+                "id": w.id,
+                "screen_name": w.kol_screen_name,
+                "profile_image_url": w.kol_profile_image_url,
+                "followers_count": w.kol_followers_count,
+                "source": "watchlist",
+                "added_at": w.created_at.isoformat() if w.created_at else None,
+            }
+            for w in watchlist
+        ]
+    }
+
+
+@router.post("/follow-list")
+async def add_to_follow_list(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    screen_name: str = Query(..., description="Twitter screen name"),
+    source: str | None = Query(None),
+) -> dict[str, Any]:
+    """Add a user to the follow list."""
+    service = SmartInteractionService(db)
+
+    # Get first operating account for the user
+    from sqlalchemy import select
+    from xspider.admin.models import OperatingAccount
+
+    result = await db.execute(
+        select(OperatingAccount)
+        .where(OperatingAccount.user_id == current_user.id)
+        .limit(1)
+    )
+    account = result.scalar_one_or_none()
+
+    if not account:
+        raise HTTPException(
+            status_code=400,
+            detail="No operating account found. Please add one first.",
+        )
+
+    try:
+        watchlist = await service.add_to_watchlist(
+            user_id=current_user.id,
+            operating_account_id=account.id,
+            kol_screen_name=screen_name.lstrip("@"),
+            interaction_mode=InteractionMode.REVIEW,
+        )
+        return {
+            "success": True,
+            "id": watchlist.id,
+            "screen_name": watchlist.kol_screen_name,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/follow-list/{entry_id}")
+async def remove_from_follow_list(
+    entry_id: int,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """Remove a user from the follow list."""
+    service = SmartInteractionService(db)
+
+    if not await service.remove_from_watchlist(entry_id, current_user.id):
+        raise HTTPException(status_code=404, detail="Entry not found")
+
+    return {"success": True}
+
+
+# ==================== Reject Endpoint (POST version) ====================
+
+
+@router.post("/{interaction_id}/reject")
+async def reject_interaction_post(
+    interaction_id: int,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """Reject a pending interaction (POST version for UI compatibility)."""
+    service = SmartInteractionService(db)
+
+    if not await service.reject_interaction(interaction_id, current_user.id):
+        raise HTTPException(status_code=404, detail="Interaction not found")
+
+    return {"success": True, "message": "Interaction rejected"}
+
+
 # ==================== KOL Watchlist ====================
 
 

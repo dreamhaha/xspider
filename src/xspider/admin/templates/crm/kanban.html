@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("crm.title") }} - xspider Admin{% endblock %}
+
+{% block extra_css %}
+<style>
+    .kanban-board {
+        display: flex;
+        gap: 1rem;
+        overflow-x: auto;
+        padding-bottom: 1rem;
+    }
+    .kanban-column {
+        min-width: 280px;
+        max-width: 280px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 0.75rem;
+    }
+    .kanban-column-header {
+        font-weight: 600;
+        padding: 0.5rem;
+        margin-bottom: 0.5rem;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .kanban-cards {
+        min-height: 100px;
+    }
+    .kanban-card {
+        background: white;
+        border-radius: 6px;
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        cursor: grab;
+    }
+    .kanban-card:hover {
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+    .kanban-card.dragging {
+        opacity: 0.5;
+    }
+    .kanban-column.drag-over {
+        background: #e9ecef;
+    }
+    .lead-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+    }
+    .stage-new { border-left: 3px solid #6c757d; }
+    .stage-contacted { border-left: 3px solid #0d6efd; }
+    .stage-replied { border-left: 3px solid #ffc107; }
+    .stage-converted { border-left: 3px solid #198754; }
+    .stage-lost { border-left: 3px solid #dc3545; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-kanban"></i> {{ _("crm.title") }}</h2>
+        <p class="text-muted">{{ _("crm.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addLeadModal">
+            <i class="bi bi-plus-lg"></i> {{ _("crm.add_lead") }}
+        </button>
+        <a href="/admin/crm/leads" class="btn btn-outline-secondary">
+            <i class="bi bi-list"></i> {{ _("crm.leads") }}
+        </a>
+        <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#convertModal">
+            <i class="bi bi-people"></i> {{ _("crm.convert_commenters") }}
+        </button>
+    </div>
+</div>
+
+<!-- Kanban Board -->
+<div class="kanban-board" id="kanban-board">
+    <!-- New Lead -->
+    <div class="kanban-column" data-stage="new_lead">
+        <div class="kanban-column-header bg-secondary text-white">
+            <span>{{ _("crm.new_lead") }}</span>
+            <span class="badge bg-light text-dark" id="count-new_lead">0</span>
+        </div>
+        <div class="kanban-cards" id="cards-new_lead"></div>
+    </div>
+
+    <!-- Contacted -->
+    <div class="kanban-column" data-stage="contacted">
+        <div class="kanban-column-header bg-primary text-white">
+            <span>{{ _("crm.contacted") }}</span>
+            <span class="badge bg-light text-dark" id="count-contacted">0</span>
+        </div>
+        <div class="kanban-cards" id="cards-contacted"></div>
+    </div>
+
+    <!-- Replied -->
+    <div class="kanban-column" data-stage="replied">
+        <div class="kanban-column-header bg-warning text-dark">
+            <span>{{ _("crm.replied") }}</span>
+            <span class="badge bg-light text-dark" id="count-replied">0</span>
+        </div>
+        <div class="kanban-cards" id="cards-replied"></div>
+    </div>
+
+    <!-- Converted -->
+    <div class="kanban-column" data-stage="converted">
+        <div class="kanban-column-header bg-success text-white">
+            <span>{{ _("crm.converted") }}</span>
+            <span class="badge bg-light text-dark" id="count-converted">0</span>
+        </div>
+        <div class="kanban-cards" id="cards-converted"></div>
+    </div>
+
+    <!-- Lost -->
+    <div class="kanban-column" data-stage="lost">
+        <div class="kanban-column-header bg-danger text-white">
+            <span>{{ _("crm.lost") }}</span>
+            <span class="badge bg-light text-dark" id="count-lost">0</span>
+        </div>
+        <div class="kanban-cards" id="cards-lost"></div>
+    </div>
+</div>
+
+<!-- Add Lead Modal -->
+<div class="modal fade" id="addLeadModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("crm.add_lead") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return addLead(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("crm.twitter_handle") }}</label>
+                        <div class="input-group">
+                            <span class="input-group-text">@</span>
+                            <input type="text" class="form-control" id="lead-handle" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("crm.source") }}</label>
+                        <input type="text" class="form-control" id="lead-source" placeholder="Search #123, Monitor, etc.">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("crm.tags") }}</label>
+                        <input type="text" class="form-control" id="lead-tags" placeholder="crypto, defi, investor">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("common.notes") }}</label>
+                        <textarea class="form-control" id="lead-notes" rows="2"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("crm.add_lead") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Lead Detail Modal -->
+<div class="modal fade" id="leadDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="lead-detail-title">Lead Detail</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="lead-detail-content">
+                <div class="text-center py-4">{{ _("common.loading") }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Convert Commenters Modal -->
+<div class="modal fade" id="convertModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("crm.convert_commenters") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">{{ _("crm.select_commenters") }}</p>
+                <div id="commenters-list" class="list-group">
+                    <div class="text-center py-4">{{ _("common.loading") }}</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                <button type="button" class="btn btn-primary" onclick="convertSelectedCommenters()">{{ _("crm.bulk_convert") }}</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let allLeads = [];
+
+async function loadLeads() {
+    try {
+        const response = await fetch('/api/crm/leads/');
+        if (!response.ok) throw new Error('Failed to load leads');
+
+        const data = await response.json();
+        allLeads = data.leads || data;
+        renderKanban(allLeads);
+    } catch (error) {
+        console.error('Error loading leads:', error);
+    }
+}
+
+function renderKanban(leads) {
+    const stages = ['new_lead', 'contacted', 'replied', 'converted', 'lost'];
+
+    stages.forEach(stage => {
+        const container = document.getElementById(`cards-${stage}`);
+        const stageLeads = leads.filter(l => l.stage === stage);
+        document.getElementById(`count-${stage}`).textContent = stageLeads.length;
+
+        container.innerHTML = stageLeads.map(lead => `
+            <div class="kanban-card stage-${stage.replace('_lead', '')}" draggable="true"
+                 data-lead-id="${lead.id}" onclick="showLeadDetail(${lead.id})">
+                <div class="d-flex align-items-center mb-2">
+                    <img src="${lead.profile_image_url || '/static/img/default-avatar.png'}"
+                         class="lead-avatar me-2" alt="Avatar">
+                    <div>
+                        <strong>@${lead.twitter_handle}</strong>
+                        <div class="small text-muted">${lead.name || ''}</div>
+                    </div>
+                </div>
+                ${lead.tags && lead.tags.length > 0 ? `
+                <div class="mb-2">
+                    ${lead.tags.slice(0, 3).map(tag => `<span class="badge bg-light text-dark me-1">${tag}</span>`).join('')}
+                </div>
+                ` : ''}
+                <div class="small text-muted">
+                    <i class="bi bi-clock"></i> ${formatTimeAgo(lead.last_activity_at || lead.created_at)}
+                </div>
+            </div>
+        `).join('');
+    });
+
+    // Setup drag and drop
+    setupDragDrop();
+}
+
+function setupDragDrop() {
+    const cards = document.querySelectorAll('.kanban-card');
+    const columns = document.querySelectorAll('.kanban-column');
+
+    cards.forEach(card => {
+        card.addEventListener('dragstart', (e) => {
+            card.classList.add('dragging');
+            e.dataTransfer.setData('text/plain', card.dataset.leadId);
+        });
+        card.addEventListener('dragend', () => {
+            card.classList.remove('dragging');
+        });
+    });
+
+    columns.forEach(column => {
+        column.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            column.classList.add('drag-over');
+        });
+        column.addEventListener('dragleave', () => {
+            column.classList.remove('drag-over');
+        });
+        column.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            column.classList.remove('drag-over');
+            const leadId = e.dataTransfer.getData('text/plain');
+            const newStage = column.dataset.stage;
+            await updateLeadStage(leadId, newStage);
+        });
+    });
+}
+
+async function updateLeadStage(leadId, newStage) {
+    try {
+        const response = await fetch(`/api/crm/leads/${leadId}/stage`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stage: newStage })
+        });
+
+        if (response.ok) {
+            loadLeads();
+        }
+    } catch (error) {
+        console.error('Error updating lead stage:', error);
+    }
+}
+
+async function showLeadDetail(leadId) {
+    const modal = new bootstrap.Modal(document.getElementById('leadDetailModal'));
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/crm/leads/${leadId}`);
+        const lead = await response.json();
+
+        document.getElementById('lead-detail-title').textContent = `@${lead.twitter_handle}`;
+        document.getElementById('lead-detail-content').innerHTML = `
+            <div class="row">
+                <div class="col-md-4 text-center">
+                    <img src="${lead.profile_image_url || '/static/img/default-avatar.png'}"
+                         class="rounded-circle mb-3" width="80" height="80" alt="Avatar">
+                    <h5>@${lead.twitter_handle}</h5>
+                    <p class="text-muted">${lead.name || ''}</p>
+                    <div class="mb-3">
+                        <span class="badge bg-${getStageColor(lead.stage)}">${t('crm.' + lead.stage)}</span>
+                    </div>
+                </div>
+                <div class="col-md-8">
+                    <h6>${t('crm.activities')}</h6>
+                    <div class="list-group list-group-flush mb-3" id="lead-activities">
+                        ${(lead.activities || []).slice(0, 5).map(a => `
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between">
+                                    <span><i class="bi bi-${getActivityIcon(a.type)}"></i> ${a.type}</span>
+                                    <small class="text-muted">${formatTimeAgo(a.created_at)}</small>
+                                </div>
+                                ${a.note ? `<small class="text-muted">${a.note}</small>` : ''}
+                            </div>
+                        `).join('') || `<div class="list-group-item text-muted">${t('analytics.no_data')}</div>`}
+                    </div>
+                    <button class="btn btn-outline-primary btn-sm" onclick="showAddActivityForm(${leadId})">
+                        <i class="bi bi-plus"></i> ${t('crm.add_activity')}
+                    </button>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Error loading lead detail:', error);
+    }
+}
+
+function getStageColor(stage) {
+    const colors = {
+        'new_lead': 'secondary',
+        'contacted': 'primary',
+        'replied': 'warning',
+        'converted': 'success',
+        'lost': 'danger'
+    };
+    return colors[stage] || 'secondary';
+}
+
+function getActivityIcon(type) {
+    const icons = {
+        'note': 'sticky',
+        'call': 'telephone',
+        'email': 'envelope',
+        'meeting': 'calendar-event',
+        'dm': 'chat'
+    };
+    return icons[type] || 'activity';
+}
+
+function formatTimeAgo(dateStr) {
+    if (!dateStr) return '';
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diff = Math.floor((now - date) / 1000);
+
+    if (diff < 60) return t('time.just_now');
+    if (diff < 3600) return t('time.minutes_ago').replace('{n}', Math.floor(diff / 60));
+    if (diff < 86400) return t('time.hours_ago').replace('{n}', Math.floor(diff / 3600));
+    return t('time.days_ago').replace('{n}', Math.floor(diff / 86400));
+}
+
+async function addLead(event) {
+    event.preventDefault();
+
+    const data = {
+        twitter_handle: document.getElementById('lead-handle').value,
+        source: document.getElementById('lead-source').value,
+        tags: document.getElementById('lead-tags').value.split(',').map(t => t.trim()).filter(t => t),
+        notes: document.getElementById('lead-notes').value
+    };
+
+    try {
+        const response = await fetch('/api/crm/leads/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addLeadModal')).hide();
+            loadLeads();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+document.addEventListener('DOMContentLoaded', loadLeads);
+</script>
+{% endblock %}

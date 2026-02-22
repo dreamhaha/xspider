@@ -1,0 +1,419 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("analytics.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-bar-chart"></i> {{ _("analytics.title") }}</h2>
+        <p class="text-muted">{{ _("analytics.description") }}</p>
+    </div>
+</div>
+
+<!-- Navigation Tabs -->
+<ul class="nav nav-tabs mb-4" id="analyticsTabs">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#overview">
+            <i class="bi bi-grid"></i> {{ _("analytics.overview") }}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#intent">
+            <i class="bi bi-lightbulb"></i> {{ _("analytics.intent_analysis") }}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#growth">
+            <i class="bi bi-graph-up-arrow"></i> {{ _("analytics.growth_tracking") }}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#overlap">
+            <i class="bi bi-venn-diagram"></i> {{ _("analytics.audience_overlap") }}
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- Overview Tab -->
+    <div class="tab-pane fade show active" id="overview">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="text-success" id="stat-high-intent">0</h3>
+                        <small class="text-muted">{{ _("analytics.high_intent") }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="text-warning" id="stat-medium-intent">0</h3>
+                        <small class="text-muted">{{ _("analytics.medium_intent") }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="text-secondary" id="stat-low-intent">0</h3>
+                        <small class="text-muted">{{ _("analytics.low_intent") }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 class="text-primary" id="stat-total-analyzed">0</h3>
+                        <small class="text-muted">Total Analyzed</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-4">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header">{{ _("analytics.intent_summary") }}</div>
+                    <div class="card-body">
+                        <canvas id="intentChart" height="200"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">{{ _("analytics.high_intent") }} Users</div>
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush" id="high-intent-list">
+                            <div class="list-group-item text-center text-muted py-4">{{ _("common.loading") }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Intent Analysis Tab -->
+    <div class="tab-pane fade" id="intent">
+        <div class="card">
+            <div class="card-header">
+                <div class="row align-items-center">
+                    <div class="col">{{ _("analytics.intent_analysis") }}</div>
+                    <div class="col-auto">
+                        <select class="form-select form-select-sm" id="intent-filter" onchange="loadIntentAnalysis()">
+                            <option value="">{{ _("common.all") }}</option>
+                            <option value="high">{{ _("analytics.high_intent") }}</option>
+                            <option value="medium">{{ _("analytics.medium_intent") }}</option>
+                            <option value="low">{{ _("analytics.low_intent") }}</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>User</th>
+                                <th>Intent Level</th>
+                                <th>Score</th>
+                                <th>Keywords</th>
+                                <th>Last Comment</th>
+                            </tr>
+                        </thead>
+                        <tbody id="intent-table-body">
+                            <tr><td colspan="5" class="text-center py-4">{{ _("common.loading") }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Growth Tracking Tab -->
+    <div class="tab-pane fade" id="growth">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <select class="form-select" id="growth-account-select" onchange="loadGrowthData()">
+                    <option value="">{{ _("analytics.select_influencers") }}</option>
+                </select>
+            </div>
+        </div>
+        <div class="card">
+            <div class="card-header">{{ _("analytics.follower_growth") }}</div>
+            <div class="card-body">
+                <canvas id="growthChart" height="250"></canvas>
+            </div>
+        </div>
+        <div class="card mt-4">
+            <div class="card-header">{{ _("analytics.growth_anomaly") }}</div>
+            <div class="card-body" id="anomaly-list">
+                <p class="text-muted">{{ _("analytics.no_data") }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Audience Overlap Tab -->
+    <div class="tab-pane fade" id="overlap">
+        <div class="card">
+            <div class="card-header">{{ _("analytics.compare_audiences") }}</div>
+            <div class="card-body">
+                <div class="row mb-3">
+                    <div class="col-md-5">
+                        <select class="form-select" id="overlap-user1">
+                            <option value="">{{ _("analytics.select_influencers") }} 1</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2 text-center py-2">vs</div>
+                    <div class="col-md-5">
+                        <select class="form-select" id="overlap-user2">
+                            <option value="">{{ _("analytics.select_influencers") }} 2</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="btn btn-primary" onclick="compareAudiences()">{{ _("analytics.compare_audiences") }}</button>
+            </div>
+        </div>
+        <div class="row mt-4" id="overlap-results" style="display: none;">
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 id="overlap-percentage">0%</h3>
+                        <small class="text-muted">{{ _("analytics.overlap_percentage") }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 id="unique-count">0</h3>
+                        <small class="text-muted">{{ _("analytics.unique_followers") }}</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h3 id="shared-count">0</h3>
+                        <small class="text-muted">{{ _("analytics.shared_followers") }}</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let intentChart = null;
+let growthChart = null;
+
+async function loadOverview() {
+    try {
+        const response = await fetch('/api/analytics/overview');
+        if (!response.ok) return;
+
+        const data = await response.json();
+        document.getElementById('stat-high-intent').textContent = data.high_intent || 0;
+        document.getElementById('stat-medium-intent').textContent = data.medium_intent || 0;
+        document.getElementById('stat-low-intent').textContent = data.low_intent || 0;
+        document.getElementById('stat-total-analyzed').textContent = data.total_analyzed || 0;
+
+        renderIntentChart(data);
+        renderHighIntentList(data.high_intent_users || []);
+    } catch (error) {
+        console.error('Error loading overview:', error);
+    }
+}
+
+function renderIntentChart(data) {
+    const ctx = document.getElementById('intentChart').getContext('2d');
+
+    if (intentChart) intentChart.destroy();
+
+    intentChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: [t('analytics.high_intent'), t('analytics.medium_intent'), t('analytics.low_intent')],
+            datasets: [{
+                data: [data.high_intent || 0, data.medium_intent || 0, data.low_intent || 0],
+                backgroundColor: ['#198754', '#ffc107', '#6c757d']
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'bottom' }
+            }
+        }
+    });
+}
+
+function renderHighIntentList(users) {
+    const container = document.getElementById('high-intent-list');
+    if (!users || users.length === 0) {
+        container.innerHTML = `<div class="list-group-item text-center text-muted">${t('analytics.no_data')}</div>`;
+        return;
+    }
+
+    container.innerHTML = users.slice(0, 5).map(user => `
+        <div class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+                <strong>@${user.screen_name}</strong>
+                <div class="small text-muted">${user.keywords?.slice(0, 2).join(', ') || ''}</div>
+            </div>
+            <span class="badge bg-success">${user.score}</span>
+        </div>
+    `).join('');
+}
+
+async function loadIntentAnalysis() {
+    const filter = document.getElementById('intent-filter').value;
+    let url = '/api/analytics/intent';
+    if (filter) url += `?level=${filter}`;
+
+    try {
+        const response = await fetch(url);
+        const data = await response.json();
+        renderIntentTable(data.users || data);
+    } catch (error) {
+        console.error('Error loading intent analysis:', error);
+    }
+}
+
+function renderIntentTable(users) {
+    const tbody = document.getElementById('intent-table-body');
+    if (!users || users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${t('analytics.no_data')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = users.map(user => {
+        const levelBadge = {
+            'high': `<span class="badge bg-success">${t('analytics.high_intent')}</span>`,
+            'medium': `<span class="badge bg-warning text-dark">${t('analytics.medium_intent')}</span>`,
+            'low': `<span class="badge bg-secondary">${t('analytics.low_intent')}</span>`
+        };
+
+        return `
+            <tr>
+                <td>@${user.screen_name}</td>
+                <td>${levelBadge[user.intent_level] || user.intent_level}</td>
+                <td>${user.score}</td>
+                <td>${(user.keywords || []).slice(0, 3).map(k => `<span class="badge bg-light text-dark me-1">${k}</span>`).join('')}</td>
+                <td class="small text-truncate" style="max-width: 200px;">${user.last_comment || '-'}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+async function loadGrowthAccounts() {
+    try {
+        const response = await fetch('/api/operating-accounts/');
+        const data = await response.json();
+        const accounts = data.accounts || data;
+
+        const select1 = document.getElementById('growth-account-select');
+        const select2 = document.getElementById('overlap-user1');
+        const select3 = document.getElementById('overlap-user2');
+
+        accounts.forEach(acc => {
+            const option = document.createElement('option');
+            option.value = acc.id;
+            option.textContent = '@' + acc.screen_name;
+
+            select1.appendChild(option.cloneNode(true));
+            select2.appendChild(option.cloneNode(true));
+            select3.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading accounts:', error);
+    }
+}
+
+async function loadGrowthData() {
+    const accountId = document.getElementById('growth-account-select').value;
+    if (!accountId) return;
+
+    try {
+        const response = await fetch(`/api/analytics/growth/${accountId}`);
+        const data = await response.json();
+        renderGrowthChart(data.history || []);
+        renderAnomalies(data.anomalies || []);
+    } catch (error) {
+        console.error('Error loading growth data:', error);
+    }
+}
+
+function renderGrowthChart(history) {
+    const ctx = document.getElementById('growthChart').getContext('2d');
+
+    if (growthChart) growthChart.destroy();
+
+    growthChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: history.map(h => new Date(h.date).toLocaleDateString()),
+            datasets: [{
+                label: t('operating_accounts.followers'),
+                data: history.map(h => h.count),
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1,
+                fill: true,
+                backgroundColor: 'rgba(75, 192, 192, 0.1)'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            }
+        }
+    });
+}
+
+function renderAnomalies(anomalies) {
+    const container = document.getElementById('anomaly-list');
+    if (!anomalies || anomalies.length === 0) {
+        container.innerHTML = `<p class="text-muted">${t('analytics.no_data')}</p>`;
+        return;
+    }
+
+    container.innerHTML = anomalies.map(a => `
+        <div class="alert alert-${a.type === 'drop' ? 'danger' : 'success'} mb-2">
+            <strong>${new Date(a.date).toLocaleDateString()}</strong>: ${a.type === 'drop' ? 'Decrease' : 'Increase'} of ${a.change} followers
+        </div>
+    `).join('');
+}
+
+async function compareAudiences() {
+    const user1 = document.getElementById('overlap-user1').value;
+    const user2 = document.getElementById('overlap-user2').value;
+
+    if (!user1 || !user2) {
+        alert('Please select both users');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/analytics/overlap?user1=${user1}&user2=${user2}`);
+        const data = await response.json();
+
+        document.getElementById('overlap-percentage').textContent = data.overlap_percentage + '%';
+        document.getElementById('unique-count').textContent = data.unique_followers;
+        document.getElementById('shared-count').textContent = data.shared_followers;
+        document.getElementById('overlap-results').style.display = 'flex';
+    } catch (error) {
+        console.error('Error comparing audiences:', error);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadOverview();
+    loadIntentAnalysis();
+    loadGrowthAccounts();
+});
+</script>
+{% endblock %}

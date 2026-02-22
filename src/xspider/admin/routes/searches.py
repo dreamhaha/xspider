@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from xspider.admin.auth import get_current_active_user, get_current_admin, get_db_session
 from xspider.admin.models import (
     AdminUser,
+    CrawlMode,
     CreditTransaction,
     DiscoveredInfluencer,
     InfluencerRelationship,
@@ -24,13 +26,18 @@ from xspider.admin.schemas import (
     GraphEdgeResponse,
     GraphNodeResponse,
     InfluencerResponse,
+    RecommendedSeedInfo,
     RelationshipResponse,
     SearchCreate,
     SearchDetailResponse,
     SearchEstimate,
     SearchGraphResponse,
+    SearchPreview,
     SearchProgressResponse,
     SearchResponse,
+    SeedRecommendationRequest,
+    SeedRecommendationResponse,
+    SeedUserInfo,
 )
 
 router = APIRouter()
@@ -40,6 +47,7 @@ CREDIT_COST_SEARCH_SEED = 10
 CREDIT_COST_CRAWL_PER_100 = 5
 CREDIT_COST_AI_AUDIT = 2
 CREDIT_COST_LLM_PER_1K = 1
+CREDIT_COST_SEED_RECOMMENDATION = 5  # Cost for AI seed recommendation
 
 
 @router.get("/", response_model=list[SearchResponse])
@@ -92,6 +100,353 @@ async def list_all_searches(
     return list(result.scalars().all())
 
 
+# NOTE: Static routes MUST come before dynamic routes like /{search_id}
+# to ensure proper route matching in FastAPI
+
+
+@router.post("/resolve-users", response_model=list[SeedUserInfo])
+async def resolve_seed_users(
+    usernames: Annotated[list[str], Body(embed=True)],
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> list[SeedUserInfo]:
+    """Resolve seed usernames to user information.
+
+    Takes a list of Twitter usernames (without @) and returns their profile info.
+    This allows the UI to preview and validate seed users before starting a search.
+    """
+    from xspider.admin.models import AccountStatus, TwitterAccount
+    from xspider.admin.services.account_pool import AccountPool
+
+    # Get active Twitter accounts
+    result = await db.execute(
+        select(TwitterAccount).where(TwitterAccount.status == AccountStatus.ACTIVE).limit(5)
+    )
+    db_accounts = list(result.scalars().all())
+
+    if not db_accounts:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="No active Twitter accounts available",
+        )
+
+    # Create account pool
+    pool = AccountPool.from_db_accounts(db_accounts)
+
+    resolved_users: list[SeedUserInfo] = []
+
+    for username in usernames:
+        # Clean up username (remove @ if present)
+        clean_username = username.strip().lstrip("@")
+        if not clean_username:
+            continue
+
+        # Get an available account
+        account = await pool.get_account()
+        if not account:
+            resolved_users.append(SeedUserInfo(
+                username=clean_username,
+                valid=False,
+                error="No available accounts",
+            ))
+            continue
+
+        try:
+            client = account.get_client()
+            user = await client.get_user_by_screen_name(clean_username)
+
+            if user:
+                resolved_users.append(SeedUserInfo(
+                    username=user.screen_name,
+                    user_id=user.id,
+                    name=user.name,
+                    description=user.description,
+                    followers_count=user.followers_count,
+                    following_count=user.following_count,
+                    profile_image_url=user.profile_image_url,
+                    valid=True,
+                ))
+            else:
+                resolved_users.append(SeedUserInfo(
+                    username=clean_username,
+                    valid=False,
+                    error="User not found",
+                ))
+        except Exception as e:
+            error_msg = str(e)
+            if "TooManyRequests" in error_msg or "rate" in error_msg.lower():
+                account.mark_rate_limited()
+                error_msg = "Rate limited"
+            resolved_users.append(SeedUserInfo(
+                username=clean_username,
+                valid=False,
+                error=error_msg[:100],  # Truncate long error messages
+            ))
+
+    return resolved_users
+
+
+@router.post("/recommend-seeds", response_model=SeedRecommendationResponse)
+async def recommend_seed_users(
+    request: SeedRecommendationRequest,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> SeedRecommendationResponse:
+    """Use LLM to recommend seed influencers based on user prompt.
+
+    Takes a natural language description of the desired influencer characteristics
+    and uses AI to suggest relevant Twitter accounts as seeds.
+
+    Example prompts:
+    - "Find crypto KOLs who discuss DeFi and have 10K-100K followers"
+    - "Looking for AI researchers and ML engineers who are active on Twitter"
+    - "推荐一些中文区的Web3投资人和项目方"
+    """
+    # Check credits
+    if current_user.credits < CREDIT_COST_SEED_RECOMMENDATION:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits. Need {CREDIT_COST_SEED_RECOMMENDATION} credits for AI recommendation.",
+        )
+
+    try:
+        from xspider.admin.services.seed_recommender import recommend_seeds
+
+        # Call LLM for recommendations
+        result = await recommend_seeds(
+            prompt=request.prompt,
+            num_recommendations=request.num_recommendations,
+            language=request.language,
+        )
+
+        # Deduct credits
+        current_user.credits -= CREDIT_COST_SEED_RECOMMENDATION
+
+        # Create transaction
+        transaction = CreditTransaction(
+            user_id=current_user.id,
+            amount=-CREDIT_COST_SEED_RECOMMENDATION,
+            balance_after=current_user.credits,
+            type=TransactionType.SEARCH,
+            description=f"AI seed recommendation: {request.prompt[:50]}...",
+        )
+        db.add(transaction)
+        await db.commit()
+
+        # Convert to response
+        recommendations = [
+            RecommendedSeedInfo(
+                username=seed.username,
+                reason=seed.reason,
+                estimated_followers=seed.estimated_followers,
+                relevance_score=seed.relevance_score,
+                category=seed.category,
+                verified=None,
+            )
+            for seed in result.seeds
+        ]
+
+        return SeedRecommendationResponse(
+            summary=result.summary,
+            recommendations=recommendations,
+            model_used=result.model_used,
+            tokens_used=result.tokens_used,
+            credits_used=CREDIT_COST_SEED_RECOMMENDATION,
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to generate recommendations: {str(e)[:200]}",
+        )
+
+
+@router.post("/preview", response_model=SearchPreview)
+async def preview_search(
+    request: SearchCreate,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> SearchPreview:
+    """Preview search with resolved seed users and cost estimate.
+
+    Resolves seed usernames if provided and estimates the search cost.
+    """
+    seed_users: list[SeedUserInfo] = []
+    valid_seeds = 0
+    invalid_seeds = 0
+
+    # If seeds provided, resolve them first
+    if request.seed_usernames and len(request.seed_usernames) > 0:
+        from xspider.admin.models import AccountStatus, TwitterAccount
+        from xspider.admin.services.account_pool import AccountPool
+
+        # Get active Twitter accounts
+        result = await db.execute(
+            select(TwitterAccount).where(TwitterAccount.status == AccountStatus.ACTIVE).limit(5)
+        )
+        db_accounts = list(result.scalars().all())
+
+        if db_accounts:
+            pool = AccountPool.from_db_accounts(db_accounts)
+
+            for username in request.seed_usernames:
+                clean_username = username.strip().lstrip("@")
+                if not clean_username:
+                    continue
+
+                account = await pool.get_account()
+                if not account:
+                    seed_users.append(SeedUserInfo(
+                        username=clean_username,
+                        valid=False,
+                        error="No available accounts",
+                    ))
+                    invalid_seeds += 1
+                    continue
+
+                try:
+                    client = account.get_client()
+                    user = await client.get_user_by_screen_name(clean_username)
+
+                    if user:
+                        seed_users.append(SeedUserInfo(
+                            username=user.screen_name,
+                            user_id=user.id,
+                            name=user.name,
+                            description=user.description,
+                            followers_count=user.followers_count,
+                            following_count=user.following_count,
+                            profile_image_url=user.profile_image_url,
+                            valid=True,
+                        ))
+                        valid_seeds += 1
+                    else:
+                        seed_users.append(SeedUserInfo(
+                            username=clean_username,
+                            valid=False,
+                            error="User not found",
+                        ))
+                        invalid_seeds += 1
+                except Exception as e:
+                    error_msg = str(e)
+                    if "TooManyRequests" in error_msg or "rate" in error_msg.lower():
+                        account.mark_rate_limited()
+                        error_msg = "Rate limited"
+                    seed_users.append(SeedUserInfo(
+                        username=clean_username,
+                        valid=False,
+                        error=error_msg[:100],
+                    ))
+                    invalid_seeds += 1
+
+    # Estimate crawl users and credits
+    estimated_seeds = valid_seeds if valid_seeds > 0 else 50  # Default for keyword mode
+    estimated_crawl_users = estimated_seeds * (50 if request.crawl_depth > 0 else 1) * request.crawl_depth
+
+    estimated_credits = (
+        CREDIT_COST_SEARCH_SEED +
+        (estimated_crawl_users // 100) * CREDIT_COST_CRAWL_PER_100 +
+        min(estimated_seeds, 100) * CREDIT_COST_AI_AUDIT
+    )
+
+    return SearchPreview(
+        seed_users=seed_users,
+        valid_seeds=valid_seeds,
+        invalid_seeds=invalid_seeds,
+        estimated_crawl_users=estimated_crawl_users,
+        estimated_credits=estimated_credits,
+    )
+
+
+@router.post("/estimate", response_model=SearchEstimate)
+async def estimate_search_cost(
+    request: SearchCreate,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+) -> SearchEstimate:
+    """Estimate credit cost for a search.
+
+    Provides a rough estimate based on crawl mode and depth.
+    """
+    # Estimate seeds based on mode
+    if request.crawl_mode == CrawlMode.SEEDS:
+        estimated_seeds = len(request.seed_usernames) if request.seed_usernames else 5
+    elif request.crawl_mode == CrawlMode.MIXED:
+        seed_count = len(request.seed_usernames) if request.seed_usernames else 0
+        estimated_seeds = seed_count + 30  # Seeds + estimated keyword results
+    else:  # keywords mode
+        estimated_seeds = 50  # Typical keyword search result
+
+    # Estimate crawl users based on depth
+    if request.crawl_depth == 0:
+        estimated_crawl_users = 0
+    else:
+        # Each level multiplies by ~30-50 users per seed
+        estimated_crawl_users = estimated_seeds * 40 * request.crawl_depth
+
+    estimated_audits = min(estimated_seeds + estimated_crawl_users // 10, 200)
+
+    breakdown = {
+        "seed_search": CREDIT_COST_SEARCH_SEED,
+        "crawling": (estimated_crawl_users // 100) * CREDIT_COST_CRAWL_PER_100,
+        "ai_audit": estimated_audits * CREDIT_COST_AI_AUDIT,
+    }
+
+    return SearchEstimate(
+        estimated_credits=sum(breakdown.values()),
+        breakdown=breakdown,
+    )
+
+
+@router.post("/", response_model=SearchResponse, status_code=status.HTTP_201_CREATED)
+async def create_search(
+    request: SearchCreate,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: AsyncSession = Depends(get_db_session),
+) -> UserSearch:
+    """Create a new search task.
+
+    Supports three crawl modes:
+    - keywords: Traditional keyword-based search (requires keywords)
+    - seeds: Start from specified influencer usernames (requires seed_usernames)
+    - mixed: Combine both keyword search and seed users
+    """
+    # Check minimum credits
+    if current_user.credits < CREDIT_COST_SEARCH_SEED:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits. Need at least {CREDIT_COST_SEARCH_SEED} credits to start a search.",
+        )
+
+    # Serialize seed_usernames to JSON if provided
+    seed_usernames_json = None
+    if request.seed_usernames and len(request.seed_usernames) > 0:
+        # Clean up usernames (remove @ if present)
+        clean_usernames = [u.strip().lstrip("@") for u in request.seed_usernames if u.strip()]
+        if clean_usernames:
+            seed_usernames_json = json.dumps(clean_usernames)
+
+    # Create search record
+    # Use empty string for keywords if not provided (database has NOT NULL constraint)
+    search = UserSearch(
+        user_id=current_user.id,
+        keywords=request.keywords.strip() if request.keywords else "",
+        industry=request.industry,
+        crawl_depth=request.crawl_depth,
+        crawl_mode=request.crawl_mode,
+        seed_usernames=seed_usernames_json,
+        crawl_commenters=request.crawl_commenters,
+        tweets_per_user=request.tweets_per_user,
+        commenters_per_tweet=request.commenters_per_tweet,
+        status=SearchStatus.PENDING,
+    )
+    db.add(search)
+    await db.commit()
+    await db.refresh(search)
+
+    return search
+
+
+# Dynamic routes with {search_id} parameter - these MUST come after static routes
 @router.get("/{search_id}", response_model=SearchDetailResponse)
 async def get_search(
     search_id: int,
@@ -248,58 +603,6 @@ async def get_search_graph(
     return SearchGraphResponse(nodes=nodes, edges=edges, stats=stats)
 
 
-@router.post("/estimate", response_model=SearchEstimate)
-async def estimate_search_cost(
-    request: SearchCreate,
-    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
-) -> SearchEstimate:
-    """Estimate credit cost for a search."""
-    # Rough estimates based on typical search
-    estimated_seeds = 50  # Typical seed count
-    estimated_crawl_users = 500  # Typical crawl depth
-    estimated_audits = 100  # Top users to audit
-
-    breakdown = {
-        "seed_search": CREDIT_COST_SEARCH_SEED,
-        "crawling": (estimated_crawl_users // 100) * CREDIT_COST_CRAWL_PER_100,
-        "ai_audit": estimated_audits * CREDIT_COST_AI_AUDIT,
-    }
-
-    return SearchEstimate(
-        estimated_credits=sum(breakdown.values()),
-        breakdown=breakdown,
-    )
-
-
-@router.post("/", response_model=SearchResponse, status_code=status.HTTP_201_CREATED)
-async def create_search(
-    request: SearchCreate,
-    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
-    db: AsyncSession = Depends(get_db_session),
-) -> UserSearch:
-    """Create a new search task."""
-    # Check minimum credits
-    if current_user.credits < CREDIT_COST_SEARCH_SEED:
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail=f"Insufficient credits. Need at least {CREDIT_COST_SEARCH_SEED} credits to start a search.",
-        )
-
-    # Create search record
-    search = UserSearch(
-        user_id=current_user.id,
-        keywords=request.keywords,
-        industry=request.industry,
-        crawl_depth=request.crawl_depth,
-        status=SearchStatus.PENDING,
-    )
-    db.add(search)
-    await db.commit()
-    await db.refresh(search)
-
-    return search
-
-
 @router.post("/{search_id}/start", response_model=SearchResponse)
 async def start_search(
     search_id: int,
@@ -340,13 +643,25 @@ async def start_search(
     current_user.credits -= CREDIT_COST_SEARCH_SEED
     search.credits_used = CREDIT_COST_SEARCH_SEED
 
+    # Create transaction description based on crawl mode
+    if search.keywords:
+        description = f"Search: {search.keywords[:50]}"
+    elif search.seed_usernames:
+        import json
+        seeds = json.loads(search.seed_usernames)
+        description = f"Seed search: @{', @'.join(seeds[:3])}"
+        if len(seeds) > 3:
+            description += f" +{len(seeds) - 3} more"
+    else:
+        description = f"Search #{search.id}"
+
     # Create transaction
     transaction = CreditTransaction(
         user_id=current_user.id,
         amount=-CREDIT_COST_SEARCH_SEED,
         balance_after=current_user.credits,
         type=TransactionType.SEARCH,
-        description=f"Search: {search.keywords[:50]}",
+        description=description,
         search_id=search.id,
     )
     db.add(transaction)
@@ -404,12 +719,13 @@ async def cancel_search(
         owner.credits += refund_amount
 
         # Create refund transaction
+        search_desc = search.keywords[:30] if search.keywords else f"#{search.id}"
         refund_transaction = CreditTransaction(
             user_id=search.user_id,
             amount=refund_amount,
             balance_after=owner.credits,
             type=TransactionType.REFUND,
-            description=f"Refund for cancelled search #{search.id}: {search.keywords[:30]}",
+            description=f"Refund for cancelled search: {search_desc}",
             search_id=search.id,
         )
         db.add(refund_transaction)
@@ -466,21 +782,33 @@ async def export_search_results(
     inf_result = await db.execute(query)
     influencers = list(inf_result.scalars().all())
 
+    # Helper to format links for display
+    def format_links(links_json: str | None) -> str:
+        if not links_json:
+            return ""
+        try:
+            links = json.loads(links_json)
+            return " | ".join(links) if links else ""
+        except json.JSONDecodeError:
+            return ""
+
     if format == "json":
         data = [
             {
                 "twitter_user_id": inf.twitter_user_id,
                 "screen_name": inf.screen_name,
                 "name": inf.name,
+                "description": inf.description,
                 "followers_count": inf.followers_count,
                 "pagerank_score": inf.pagerank_score,
                 "hidden_score": inf.hidden_score,
                 "is_relevant": inf.is_relevant,
                 "relevance_score": inf.relevance_score,
+                "extracted_links": json.loads(inf.extracted_links) if inf.extracted_links else [],
             }
             for inf in influencers
         ]
-        content = json.dumps(data, indent=2)
+        content = json.dumps(data, indent=2, ensure_ascii=False)
         media_type = "application/json"
         filename = f"search_{search_id}_results.json"
     else:
@@ -490,22 +818,26 @@ async def export_search_results(
             "twitter_user_id",
             "screen_name",
             "name",
+            "description",
             "followers_count",
             "pagerank_score",
             "hidden_score",
             "is_relevant",
             "relevance_score",
+            "links",
         ])
         for inf in influencers:
             writer.writerow([
                 inf.twitter_user_id,
                 inf.screen_name,
                 inf.name,
+                inf.description or "",
                 inf.followers_count,
                 inf.pagerank_score,
                 inf.hidden_score,
                 inf.is_relevant,
                 inf.relevance_score,
+                format_links(inf.extracted_links),
             ])
         content = output.getvalue()
         media_type = "text/csv"

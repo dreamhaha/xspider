@@ -77,6 +77,16 @@ async function loadSearches() {
     }
 }
 
+// Toggle seed list expansion
+function toggleSeedList(searchId) {
+    const preview = document.querySelector(`.seed-preview-${searchId}`);
+    const full = document.querySelector(`.seed-full-${searchId}`);
+    if (preview && full) {
+        preview.classList.toggle('d-none');
+        full.classList.toggle('d-none');
+    }
+}
+
 function renderSearches(searches) {
     const tbody = document.getElementById('searches-table-body');
 
@@ -87,15 +97,63 @@ function renderSearches(searches) {
 
     tbody.innerHTML = searches.map(search => {
         const statusBadge = getStatusBadge(search.status);
-        const keywords = search.keywords.length > 50
-            ? search.keywords.substring(0, 50) + '...'
-            : search.keywords;
         const created = formatDate(search.created_at);
+
+        // Handle display based on crawl mode
+        let sourceHtml = '';
+        if (search.keywords && search.keywords.trim()) {
+            // Keywords mode - show keywords
+            const keywords = search.keywords.length > 50
+                ? search.keywords.substring(0, 50) + '...'
+                : search.keywords;
+            sourceHtml = `<span title="${search.keywords}">${keywords}</span>`;
+        } else if (search.seed_usernames) {
+            // Seeds mode - show seed usernames with links
+            try {
+                const seeds = JSON.parse(search.seed_usernames);
+                const maxDisplay = 3;
+                const displaySeeds = seeds.slice(0, maxDisplay);
+                const remainingCount = seeds.length - maxDisplay;
+
+                // Create links for displayed seeds
+                const seedLinks = displaySeeds.map(username =>
+                    `<a href="https://twitter.com/${username}" target="_blank" class="text-decoration-none">@${username}</a>`
+                ).join(', ');
+
+                if (remainingCount > 0) {
+                    // Has more seeds - show expandable
+                    const allSeedLinks = seeds.map(username =>
+                        `<a href="https://twitter.com/${username}" target="_blank" class="text-decoration-none">@${username}</a>`
+                    ).join(', ');
+
+                    sourceHtml = `
+                        <span class="seed-preview-${search.id}">
+                            ${seedLinks}
+                            <a href="javascript:void(0)" class="text-primary ms-1" onclick="toggleSeedList(${search.id})">
+                                +${remainingCount} ${t('common.more')}
+                            </a>
+                        </span>
+                        <span class="seed-full-${search.id} d-none">
+                            ${allSeedLinks}
+                            <a href="javascript:void(0)" class="text-muted ms-1" onclick="toggleSeedList(${search.id})">
+                                [${t('common.collapse')}]
+                            </a>
+                        </span>
+                    `;
+                } else {
+                    sourceHtml = seedLinks;
+                }
+            } catch (e) {
+                sourceHtml = `<span class="badge bg-info">${t('searches.mode_seeds')}</span>`;
+            }
+        } else {
+            sourceHtml = '-';
+        }
 
         return `
             <tr>
                 <td>${search.id}</td>
-                <td title="${search.keywords}">${keywords}</td>
+                <td>${sourceHtml}</td>
                 <td>${search.industry || '-'}</td>
                 <td>${statusBadge}</td>
                 <td>${search.seeds_found}</td>

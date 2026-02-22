@@ -10,108 +10,293 @@
     </div>
 </div>
 
-<div class="row">
-    <div class="col-md-6">
-        <!-- Profile Info -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <i class="bi bi-person-circle"></i> {{ _("profile.account_info") }}
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="form-label text-muted">{{ _("profile.username") }}</label>
-                    <p class="form-control-plaintext"><strong id="profile-username">{{ user.username }}</strong></p>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label text-muted">{{ _("profile.email") }}</label>
-                    <p class="form-control-plaintext" id="profile-email">{{ _("common.loading") }}</p>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label text-muted">{{ _("profile.role") }}</label>
-                    <p class="form-control-plaintext" id="profile-role">
-                        {% if user.role.value == 'admin' %}
-                        <span class="badge bg-danger">{{ _("users.admin") }}</span>
-                        {% else %}
-                        <span class="badge bg-primary">{{ _("users.user") }}</span>
-                        {% endif %}
-                    </p>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label text-muted">{{ _("credits.current_balance") }}</label>
-                    <p class="form-control-plaintext">
-                        <span class="badge bg-warning text-dark fs-5" id="profile-credits">{{ user.credits }}</span>
-                    </p>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label text-muted">{{ _("profile.member_since") }}</label>
-                    <p class="form-control-plaintext" id="profile-created">{{ _("common.loading") }}</p>
-                </div>
-            </div>
-        </div>
+<!-- Navigation Tabs -->
+<ul class="nav nav-tabs mb-4" id="profileTabs">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#profile-tab">
+            <i class="bi bi-person-circle"></i> {{ _("profile.account_info") }}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#api-keys-tab">
+            <i class="bi bi-key"></i> {{ _("profile.api_keys") }}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#privacy-tab">
+            <i class="bi bi-shield-lock"></i> {{ _("privacy.title") }}
+        </a>
+    </li>
+</ul>
 
-        <!-- Change Password -->
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-key"></i> {{ _("profile.change_password") }}
+<div class="tab-content">
+    <!-- Profile Tab -->
+    <div class="tab-pane fade show active" id="profile-tab">
+        <div class="row">
+            <div class="col-md-6">
+                <!-- Profile Info -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-person-circle"></i> {{ _("profile.account_info") }}
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label text-muted">{{ _("profile.username") }}</label>
+                            <p class="form-control-plaintext"><strong id="profile-username">{{ user.username }}</strong></p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">{{ _("profile.email") }}</label>
+                            <p class="form-control-plaintext" id="profile-email">{{ _("common.loading") }}</p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">{{ _("profile.role") }}</label>
+                            <p class="form-control-plaintext" id="profile-role">
+                                {% if user.role.value == 'admin' %}
+                                <span class="badge bg-danger">{{ _("users.admin") }}</span>
+                                {% else %}
+                                <span class="badge bg-primary">{{ _("users.user") }}</span>
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">{{ _("credits.current_balance") }}</label>
+                            <p class="form-control-plaintext">
+                                <span class="badge bg-warning text-dark fs-5" id="profile-credits">{{ user.credits }}</span>
+                            </p>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-muted">{{ _("profile.member_since") }}</label>
+                            <p class="form-control-plaintext" id="profile-created">{{ _("common.loading") }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Change Password -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-key"></i> {{ _("profile.change_password") }}
+                    </div>
+                    <div class="card-body">
+                        <form onsubmit="return changePassword(event)">
+                            <div class="mb-3">
+                                <label class="form-label">{{ _("profile.current_password") }}</label>
+                                <input type="password" class="form-control" id="current-password" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">{{ _("profile.new_password") }}</label>
+                                <input type="password" class="form-control" id="new-password" required minlength="6">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">{{ _("profile.confirm_password") }}</label>
+                                <input type="password" class="form-control" id="confirm-password" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-lg"></i> {{ _("profile.update_password") }}
+                            </button>
+                        </form>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <form onsubmit="return changePassword(event)">
-                    <div class="mb-3">
-                        <label class="form-label">{{ _("profile.current_password") }}</label>
-                        <input type="password" class="form-control" id="current-password" required>
+
+            <div class="col-md-6">
+                <!-- Usage Stats -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-bar-chart"></i> {{ _("searches.title") }}
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">{{ _("profile.new_password") }}</label>
-                        <input type="password" class="form-control" id="new-password" required minlength="6">
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <h3 id="stat-searches">-</h3>
+                                <small class="text-muted">{{ _("searches.title") }}</small>
+                            </div>
+                            <div class="col-4">
+                                <h3 id="stat-influencers">-</h3>
+                                <small class="text-muted">{{ _("searches.influencers_found") }}</small>
+                            </div>
+                            <div class="col-4">
+                                <h3 id="stat-credits-used">-</h3>
+                                <small class="text-muted">{{ _("searches.credits_used") }}</small>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">{{ _("profile.confirm_password") }}</label>
-                        <input type="password" class="form-control" id="confirm-password" required>
+                </div>
+
+                <!-- Recent Searches -->
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-clock-history"></i> {{ _("searches.search_history") }}
                     </div>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-check-lg"></i> {{ _("profile.update_password") }}
-                    </button>
-                </form>
+                    <div class="card-body p-0">
+                        <ul class="list-group list-group-flush" id="recent-searches-list">
+                            <li class="list-group-item text-center text-muted">{{ _("common.loading") }}</li>
+                        </ul>
+                    </div>
+                    <div class="card-footer text-center">
+                        <a href="/searches" class="text-decoration-none">{{ _("searches.view_results") }}</a>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-6">
-        <!-- Usage Stats -->
-        <div class="card mb-4">
-            <div class="card-header">
-                <i class="bi bi-bar-chart"></i> {{ _("searches.title") }}
-            </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-4">
-                        <h3 id="stat-searches">-</h3>
-                        <small class="text-muted">{{ _("searches.title") }}</small>
+    <!-- API Keys Tab -->
+    <div class="tab-pane fade" id="api-keys-tab">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="bi bi-key"></i> {{ _("profile.api_keys") }}</span>
+                        <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createApiKeyModal">
+                            <i class="bi bi-plus-lg"></i> {{ _("profile.create_api_key") }}
+                        </button>
                     </div>
-                    <div class="col-4">
-                        <h3 id="stat-influencers">-</h3>
-                        <small class="text-muted">{{ _("searches.influencers_found") }}</small>
-                    </div>
-                    <div class="col-4">
-                        <h3 id="stat-credits-used">-</h3>
-                        <small class="text-muted">{{ _("searches.credits_used") }}</small>
+                    <div class="card-body">
+                        <p class="text-muted small">{{ _("profile.api_keys_description") }}</p>
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>{{ _("profile.key_name") }}</th>
+                                        <th>Key (prefix)</th>
+                                        <th>{{ _("profile.expires_in") }}</th>
+                                        <th>{{ _("common.created_at") }}</th>
+                                        <th>{{ _("common.actions") }}</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="api-keys-table-body">
+                                    <tr><td colspan="5" class="text-center py-4">{{ _("common.loading") }}</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
+    </div>
 
-        <!-- Recent Searches -->
-        <div class="card">
-            <div class="card-header">
-                <i class="bi bi-clock-history"></i> {{ _("searches.search_history") }}
+    <!-- Privacy Tab -->
+    <div class="tab-pane fade" id="privacy-tab">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-clock-history"></i> {{ _("privacy.data_retention") }}
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">{{ _("privacy.description") }}</p>
+                        <div class="mb-3">
+                            <label class="form-label">{{ _("privacy.retention_days") }}</label>
+                            <select class="form-select" id="retention-days" style="max-width: 200px;">
+                                <option value="30">30 days</option>
+                                <option value="60">60 days</option>
+                                <option value="90" selected>90 days</option>
+                                <option value="180">180 days</option>
+                                <option value="365">365 days</option>
+                                <option value="0">Forever</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-outline-primary" onclick="saveRetention()">
+                            <i class="bi bi-check-lg"></i> {{ _("common.save") }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <i class="bi bi-download"></i> {{ _("privacy.export_data") }}
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Export all your data in JSON format.</p>
+                        <div class="mb-3">
+                            <label class="form-label">{{ _("privacy.export_format") }}</label>
+                            <select class="form-select" id="export-format" style="max-width: 200px;">
+                                <option value="json">JSON</option>
+                                <option value="csv">CSV</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-outline-primary" onclick="exportData()">
+                            <i class="bi bi-download"></i> {{ _("privacy.export_data") }}
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card border-danger">
+                    <div class="card-header text-danger">
+                        <i class="bi bi-exclamation-triangle"></i> {{ _("privacy.delete_data") }}
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">{{ _("privacy.confirm_delete_data") }}</p>
+                        <button class="btn btn-danger" onclick="deleteAllData()">
+                            <i class="bi bi-trash"></i> {{ _("privacy.delete_data") }}
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="card-body p-0">
-                <ul class="list-group list-group-flush" id="recent-searches-list">
-                    <li class="list-group-item text-center text-muted">{{ _("common.loading") }}</li>
-                </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Create API Key Modal -->
+<div class="modal fade" id="createApiKeyModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("profile.create_api_key") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="card-footer text-center">
-                <a href="/searches" class="text-decoration-none">{{ _("searches.view_results") }}</a>
+            <form onsubmit="return createApiKey(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("profile.key_name") }}</label>
+                        <input type="text" class="form-control" id="key-name" required placeholder="My API Key">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("profile.expires_in") }}</label>
+                        <select class="form-select" id="key-expires">
+                            <option value="30">30 days</option>
+                            <option value="60">60 days</option>
+                            <option value="90">90 days</option>
+                            <option value="180">180 days</option>
+                            <option value="365">1 year</option>
+                            <option value="0">{{ _("profile.never_expires") }}</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("profile.create_api_key") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Show API Key Modal -->
+<div class="modal fade" id="showApiKeyModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("profile.api_keys") }}</h5>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i> {{ _("auth.api_key_warning") }}
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">API Key</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control font-monospace" id="new-api-key" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyApiKey()">
+                            <i class="bi bi-clipboard"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal" onclick="loadApiKeys()">
+                    {{ _("common.close") }}
+                </button>
             </div>
         </div>
     </div>
@@ -225,9 +410,196 @@ async function changePassword(event) {
     return false;
 }
 
+// API Keys functions
+async function loadApiKeys() {
+    try {
+        const response = await fetch('/api/auth/keys');
+        if (!response.ok) throw new Error('Failed to load API keys');
+
+        const data = await response.json();
+        renderApiKeys(data.keys || data);
+    } catch (error) {
+        console.error('Error loading API keys:', error);
+        document.getElementById('api-keys-table-body').innerHTML =
+            `<tr><td colspan="5" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderApiKeys(keys) {
+    const tbody = document.getElementById('api-keys-table-body');
+
+    if (!keys || keys.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${t('profile.no_api_keys')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = keys.map(k => {
+        const expiresAt = k.expires_at
+            ? new Date(k.expires_at).toLocaleDateString()
+            : t('profile.never_expires');
+
+        return `
+            <tr>
+                <td>${escapeHtml(k.name)}</td>
+                <td><code>${k.key_prefix}...</code></td>
+                <td>${expiresAt}</td>
+                <td>${new Date(k.created_at).toLocaleDateString()}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-danger" onclick="revokeApiKey(${k.id})">
+                        <i class="bi bi-trash"></i> ${t('profile.revoke')}
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function createApiKey(event) {
+    event.preventDefault();
+
+    const data = {
+        name: document.getElementById('key-name').value,
+        expires_in_days: parseInt(document.getElementById('key-expires').value) || null
+    };
+
+    try {
+        const response = await fetch('/api/auth/keys', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            bootstrap.Modal.getInstance(document.getElementById('createApiKeyModal')).hide();
+
+            // Show the new API key
+            document.getElementById('new-api-key').value = result.api_key;
+            new bootstrap.Modal(document.getElementById('showApiKeyModal')).show();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+function copyApiKey() {
+    const input = document.getElementById('new-api-key');
+    navigator.clipboard.writeText(input.value).then(() => {
+        alert('Copied to clipboard!');
+    });
+}
+
+async function revokeApiKey(keyId) {
+    if (!confirm(t('profile.confirm_revoke'))) return;
+
+    try {
+        const response = await fetch(`/api/auth/keys/${keyId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadApiKeys();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+// Privacy functions
+async function saveRetention() {
+    const days = parseInt(document.getElementById('retention-days').value);
+
+    try {
+        const response = await fetch('/api/privacy/retention', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ retention_days: days })
+        });
+
+        if (response.ok) {
+            alert(t('common.operation_success'));
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function exportData() {
+    const format = document.getElementById('export-format').value;
+
+    try {
+        const response = await fetch(`/api/privacy/export?format=${format}`, { method: 'POST' });
+        if (response.ok) {
+            alert(t('privacy.data_exported'));
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function deleteAllData() {
+    if (!confirm(t('privacy.confirm_delete_data'))) return;
+
+    // Double confirm
+    const confirmText = prompt('Type "DELETE" to confirm:');
+    if (confirmText !== 'DELETE') return;
+
+    try {
+        const response = await fetch('/api/privacy/delete', { method: 'DELETE' });
+        if (response.ok) {
+            alert(t('privacy.data_deleted'));
+            window.location.href = '/login';
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+// Tab change handlers
+document.querySelectorAll('a[data-bs-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', (e) => {
+        const target = e.target.getAttribute('href');
+        if (target === '#api-keys-tab') loadApiKeys();
+    });
+});
+
+// Check URL hash for direct tab navigation
+function checkUrlHash() {
+    const hash = window.location.hash;
+    if (hash === '#api-keys') {
+        const tab = new bootstrap.Tab(document.querySelector('a[href="#api-keys-tab"]'));
+        tab.show();
+    } else if (hash === '#privacy') {
+        const tab = new bootstrap.Tab(document.querySelector('a[href="#privacy-tab"]'));
+        tab.show();
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     loadProfile();
     loadStats();
+    checkUrlHash();
 });
 </script>
 {% endblock %}

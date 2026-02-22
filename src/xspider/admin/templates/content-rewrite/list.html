@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("content_rewrite.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-pencil-square"></i> {{ _("content_rewrite.title") }}</h2>
+        <p class="text-muted">{{ _("content_rewrite.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addRewriteModal">
+            <i class="bi bi-plus-lg"></i> {{ _("content_rewrite.add_rewrite") }}
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" id="status-filter" onchange="loadRewrites()">
+            <option value="">{{ _("common.all") }}</option>
+            <option value="draft">{{ _("content_rewrite.draft") }}</option>
+            <option value="scheduled">{{ _("content_rewrite.scheduled") }}</option>
+            <option value="published">{{ _("content_rewrite.published") }}</option>
+            <option value="failed">{{ _("content_rewrite.failed") }}</option>
+        </select>
+    </div>
+</div>
+
+<!-- Rewrites Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>{{ _("content_rewrite.original_content") }}</th>
+                        <th>{{ _("content_rewrite.rewritten_content") }}</th>
+                        <th>{{ _("content_rewrite.status") }}</th>
+                        <th>{{ _("content_rewrite.scheduled_time") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="rewrites-table-body">
+                    <tr>
+                        <td colspan="6" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Rewrite Modal -->
+<div class="modal fade" id="addRewriteModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("content_rewrite.add_rewrite") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return addRewrite(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("content_rewrite.original_content") }}</label>
+                        <textarea class="form-control" id="original-content" rows="4" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-primary" onclick="generateRewrite()">
+                            <i class="bi bi-magic"></i> {{ _("content_rewrite.rewrite_now") }}
+                        </button>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("content_rewrite.rewritten_content") }}</label>
+                        <textarea class="form-control" id="rewritten-content" rows="4"></textarea>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <label class="form-label">{{ _("content_rewrite.scheduled_time") }} ({{ _("common.optional") }})</label>
+                            <input type="datetime-local" class="form-control" id="scheduled-time">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Operating Account</label>
+                            <select class="form-select" id="operating-account">
+                                <option value="">Select account...</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("common.save") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadRewrites() {
+    const statusFilter = document.getElementById('status-filter').value;
+    let url = '/api/content-rewrite/';
+    if (statusFilter) url += `?status=${statusFilter}`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load rewrites');
+
+        const data = await response.json();
+        renderRewrites(data.rewrites || data);
+    } catch (error) {
+        console.error('Error loading rewrites:', error);
+        document.getElementById('rewrites-table-body').innerHTML =
+            `<tr><td colspan="6" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderRewrites(rewrites) {
+    const tbody = document.getElementById('rewrites-table-body');
+
+    if (!rewrites || rewrites.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">${t('content_rewrite.no_rewrites')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = rewrites.map(r => {
+        const statusBadge = getStatusBadge(r.status);
+        const scheduledTime = r.scheduled_at ? new Date(r.scheduled_at).toLocaleString() : '-';
+
+        return `
+            <tr>
+                <td>${r.id}</td>
+                <td class="text-truncate" style="max-width: 200px;">${escapeHtml(r.original_content)}</td>
+                <td class="text-truncate" style="max-width: 200px;">${escapeHtml(r.rewritten_content || '-')}</td>
+                <td>${statusBadge}</td>
+                <td>${scheduledTime}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        ${r.status === 'draft' ? `
+                        <button class="btn btn-outline-success" onclick="schedulePost(${r.id})" title="${t('content_rewrite.schedule_post')}">
+                            <i class="bi bi-calendar-check"></i>
+                        </button>
+                        ` : ''}
+                        <button class="btn btn-outline-primary" onclick="refreshEngagement(${r.id})" title="${t('content_rewrite.refresh_engagement')}">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deleteRewrite(${r.id})" title="${t('common.delete')}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'draft': `<span class="badge bg-secondary">${t('content_rewrite.draft')}</span>`,
+        'scheduled': `<span class="badge bg-primary">${t('content_rewrite.scheduled')}</span>`,
+        'published': `<span class="badge bg-success">${t('content_rewrite.published')}</span>`,
+        'failed': `<span class="badge bg-danger">${t('content_rewrite.failed')}</span>`
+    };
+    return badges[status] || status;
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function generateRewrite() {
+    const original = document.getElementById('original-content').value;
+    if (!original) return;
+
+    try {
+        const btn = event.target;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Generating...';
+
+        const response = await fetch('/api/content-rewrite/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: original })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById('rewritten-content').value = data.rewritten_content;
+        } else {
+            alert(t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    } finally {
+        const btn = event.target;
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-magic"></i> ${t('content_rewrite.rewrite_now')}`;
+    }
+}
+
+async function loadOperatingAccounts() {
+    try {
+        const response = await fetch('/api/operating-accounts/');
+        const data = await response.json();
+        const accounts = data.accounts || data;
+
+        const select = document.getElementById('operating-account');
+        accounts.forEach(acc => {
+            const option = document.createElement('option');
+            option.value = acc.id;
+            option.textContent = '@' + acc.screen_name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading accounts:', error);
+    }
+}
+
+async function addRewrite(event) {
+    event.preventDefault();
+
+    const data = {
+        original_content: document.getElementById('original-content').value,
+        rewritten_content: document.getElementById('rewritten-content').value,
+        scheduled_at: document.getElementById('scheduled-time').value || null,
+        operating_account_id: document.getElementById('operating-account').value || null
+    };
+
+    try {
+        const response = await fetch('/api/content-rewrite/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addRewriteModal')).hide();
+            loadRewrites();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function schedulePost(rewriteId) {
+    const scheduledTime = prompt('Enter scheduled time (YYYY-MM-DD HH:MM):');
+    if (!scheduledTime) return;
+
+    try {
+        const response = await fetch(`/api/content-rewrite/${rewriteId}/schedule`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ scheduled_at: scheduledTime })
+        });
+
+        if (response.ok) {
+            loadRewrites();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function refreshEngagement(rewriteId) {
+    try {
+        const response = await fetch(`/api/content-rewrite/${rewriteId}/refresh-engagement`, { method: 'POST' });
+        if (response.ok) {
+            loadRewrites();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function deleteRewrite(rewriteId) {
+    if (!confirm(t('content_rewrite.confirm_delete'))) return;
+
+    try {
+        const response = await fetch(`/api/content-rewrite/${rewriteId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadRewrites();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadRewrites();
+    loadOperatingAccounts();
+});
+</script>
+{% endblock %}

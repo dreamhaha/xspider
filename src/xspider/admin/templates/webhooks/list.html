@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("webhooks.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-link-45deg"></i> {{ _("webhooks.title") }}</h2>
+        <p class="text-muted">{{ _("webhooks.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addWebhookModal">
+            <i class="bi bi-plus-lg"></i> {{ _("webhooks.add_webhook") }}
+        </button>
+    </div>
+</div>
+
+<!-- Webhooks Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>{{ _("webhooks.url") }}</th>
+                        <th>{{ _("webhooks.events") }}</th>
+                        <th>{{ _("webhooks.is_active") }}</th>
+                        <th>{{ _("webhooks.last_triggered") }}</th>
+                        <th>{{ _("webhooks.success_count") }} / {{ _("webhooks.failure_count") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="webhooks-table-body">
+                    <tr>
+                        <td colspan="7" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Webhook Modal -->
+<div class="modal fade" id="addWebhookModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="webhook-modal-title">{{ _("webhooks.add_webhook") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return saveWebhook(event)">
+                <input type="hidden" id="webhook-id">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("webhooks.url") }}</label>
+                        <input type="url" class="form-control" id="webhook-url" required placeholder="https://example.com/webhook">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("webhooks.secret") }} ({{ _("common.optional") }})</label>
+                        <input type="text" class="form-control" id="webhook-secret" placeholder="Used for signature verification">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("webhooks.event_types") }}</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="event-search-completed" value="search_completed">
+                            <label class="form-check-label" for="event-search-completed">{{ _("webhooks.search_completed") }}</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="event-monitor-updated" value="monitor_updated">
+                            <label class="form-check-label" for="event-monitor-updated">{{ _("webhooks.monitor_updated") }}</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="event-lead-converted" value="lead_converted">
+                            <label class="form-check-label" for="event-lead-converted">{{ _("webhooks.lead_converted") }}</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="event-shadowban-detected" value="shadowban_detected">
+                            <label class="form-check-label" for="event-shadowban-detected">{{ _("webhooks.shadowban_detected") }}</label>
+                        </div>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="webhook-active" checked>
+                        <label class="form-check-label" for="webhook-active">{{ _("webhooks.is_active") }}</label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("common.save") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Webhook Logs Modal -->
+<div class="modal fade" id="logsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("webhooks.logs") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>{{ _("webhooks.timestamp") }}</th>
+                                <th>Event</th>
+                                <th>{{ _("webhooks.status_code") }}</th>
+                                <th>{{ _("webhooks.response") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logs-table-body">
+                            <tr><td colspan="4" class="text-center">{{ _("common.loading") }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadWebhooks() {
+    try {
+        const response = await fetch('/api/webhooks/');
+        if (!response.ok) throw new Error('Failed to load webhooks');
+
+        const data = await response.json();
+        renderWebhooks(data.webhooks || data);
+    } catch (error) {
+        console.error('Error loading webhooks:', error);
+        document.getElementById('webhooks-table-body').innerHTML =
+            `<tr><td colspan="7" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderWebhooks(webhooks) {
+    const tbody = document.getElementById('webhooks-table-body');
+
+    if (!webhooks || webhooks.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="7" class="text-center text-muted">${t('webhooks.no_webhooks')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = webhooks.map(w => {
+        const activeBadge = w.is_active
+            ? `<span class="badge bg-success">${t('status.active')}</span>`
+            : `<span class="badge bg-secondary">${t('status.inactive')}</span>`;
+
+        const events = (w.events || []).map(e => `<span class="badge bg-light text-dark me-1">${e}</span>`).join('');
+        const lastTriggered = w.last_triggered_at ? formatDate(w.last_triggered_at) : '-';
+
+        return `
+            <tr>
+                <td>${w.id}</td>
+                <td class="text-truncate" style="max-width: 200px;" title="${escapeHtml(w.url)}">${escapeHtml(w.url)}</td>
+                <td>${events}</td>
+                <td>${activeBadge}</td>
+                <td>${lastTriggered}</td>
+                <td>
+                    <span class="text-success">${w.success_count || 0}</span> /
+                    <span class="text-danger">${w.failure_count || 0}</span>
+                </td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-info" onclick="testWebhook(${w.id})" title="${t('webhooks.test_webhook')}">
+                            <i class="bi bi-send"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="viewLogs(${w.id})" title="${t('webhooks.view_logs')}">
+                            <i class="bi bi-list-ul"></i>
+                        </button>
+                        <button class="btn btn-outline-primary" onclick="editWebhook(${w.id})" title="${t('common.edit')}">
+                            <i class="bi bi-pencil"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deleteWebhook(${w.id})" title="${t('common.delete')}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleString();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function resetForm() {
+    document.getElementById('webhook-id').value = '';
+    document.getElementById('webhook-url').value = '';
+    document.getElementById('webhook-secret').value = '';
+    document.getElementById('webhook-active').checked = true;
+    document.querySelectorAll('[id^="event-"]').forEach(cb => cb.checked = false);
+    document.getElementById('webhook-modal-title').textContent = t('webhooks.add_webhook');
+}
+
+async function editWebhook(webhookId) {
+    try {
+        const response = await fetch(`/api/webhooks/${webhookId}`);
+        const webhook = await response.json();
+
+        document.getElementById('webhook-id').value = webhook.id;
+        document.getElementById('webhook-url').value = webhook.url;
+        document.getElementById('webhook-secret').value = webhook.secret || '';
+        document.getElementById('webhook-active').checked = webhook.is_active;
+        document.getElementById('webhook-modal-title').textContent = t('webhooks.edit_webhook');
+
+        // Check event checkboxes
+        document.querySelectorAll('[id^="event-"]').forEach(cb => {
+            cb.checked = (webhook.events || []).includes(cb.value);
+        });
+
+        new bootstrap.Modal(document.getElementById('addWebhookModal')).show();
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function saveWebhook(event) {
+    event.preventDefault();
+
+    const webhookId = document.getElementById('webhook-id').value;
+    const events = [];
+    document.querySelectorAll('[id^="event-"]:checked').forEach(cb => {
+        events.push(cb.value);
+    });
+
+    if (events.length === 0) {
+        alert('Please select at least one event type');
+        return false;
+    }
+
+    const data = {
+        url: document.getElementById('webhook-url').value,
+        secret: document.getElementById('webhook-secret').value || null,
+        events: events,
+        is_active: document.getElementById('webhook-active').checked
+    };
+
+    const url = webhookId ? `/api/webhooks/${webhookId}` : '/api/webhooks/';
+    const method = webhookId ? 'PUT' : 'POST';
+
+    try {
+        const response = await fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addWebhookModal')).hide();
+            resetForm();
+            loadWebhooks();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function testWebhook(webhookId) {
+    try {
+        const response = await fetch(`/api/webhooks/${webhookId}/test`, { method: 'POST' });
+        if (response.ok) {
+            alert(t('webhooks.test_sent'));
+            loadWebhooks();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function viewLogs(webhookId) {
+    const modal = new bootstrap.Modal(document.getElementById('logsModal'));
+    modal.show();
+
+    try {
+        const response = await fetch(`/api/webhooks/${webhookId}/logs`);
+        const data = await response.json();
+        const logs = data.logs || data;
+
+        const tbody = document.getElementById('logs-table-body');
+        if (!logs || logs.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" class="text-center text-muted">${t('analytics.no_data')}</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = logs.map(log => `
+            <tr>
+                <td>${formatDate(log.timestamp)}</td>
+                <td>${log.event_type}</td>
+                <td>
+                    <span class="badge bg-${log.status_code >= 200 && log.status_code < 300 ? 'success' : 'danger'}">
+                        ${log.status_code}
+                    </span>
+                </td>
+                <td class="text-truncate" style="max-width: 200px;">${escapeHtml(log.response || '-')}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        document.getElementById('logs-table-body').innerHTML =
+            `<tr><td colspan="4" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+async function deleteWebhook(webhookId) {
+    if (!confirm(t('webhooks.confirm_delete'))) return;
+
+    try {
+        const response = await fetch(`/api/webhooks/${webhookId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadWebhooks();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+// Reset form when modal is hidden
+document.getElementById('addWebhookModal').addEventListener('hidden.bs.modal', resetForm);
+
+document.addEventListener('DOMContentLoaded', loadWebhooks);
+</script>
+{% endblock %}

@@ -21,6 +21,68 @@ router = APIRouter(prefix="/content-rewrite", tags=["Content Rewrite"])
 # ==================== Rewrite Operations ====================
 
 
+@router.post("/generate")
+async def generate_rewrite(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    content: str = Query(None, description="Content to rewrite"),
+) -> dict[str, Any]:
+    """Generate a quick rewrite of content (simple endpoint).
+
+    This is a simplified endpoint for the UI that takes raw content
+    and returns the rewritten version.
+    """
+    from pydantic import BaseModel
+
+    service = ContentRewriteService(db)
+
+    if not content:
+        raise HTTPException(status_code=400, detail="Content is required")
+
+    try:
+        rewritten = await service.generate_quick_rewrite(
+            user_id=current_user.id,
+            content=content,
+        )
+        return {"rewritten_content": rewritten}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/", response_model=ContentRewriteResponse)
+async def create_rewrite(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    original_content: str = Query(..., description="Original content"),
+    rewritten_content: str | None = Query(None, description="Rewritten content"),
+    scheduled_at: str | None = Query(None, description="Scheduled publish time"),
+    operating_account_id: int | None = Query(None, description="Operating account ID"),
+) -> Any:
+    """Create a content rewrite entry."""
+    from datetime import datetime
+
+    service = ContentRewriteService(db)
+
+    scheduled = None
+    if scheduled_at:
+        try:
+            scheduled = datetime.fromisoformat(scheduled_at.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid scheduled_at format")
+
+    try:
+        rewrite = await service.create_rewrite(
+            user_id=current_user.id,
+            original_content=original_content,
+            rewritten_content=rewritten_content,
+            scheduled_at=scheduled,
+            operating_account_id=operating_account_id,
+        )
+        return rewrite
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.post("/rewrite", response_model=ContentRewriteResponse)
 async def rewrite_content(
     request: ContentRewriteCreate,

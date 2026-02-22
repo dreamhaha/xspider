@@ -9,6 +9,9 @@
         <p class="text-muted">{{ _("proxies.description") }}</p>
     </div>
     <div class="col-auto">
+        <button class="btn btn-danger me-2" id="batch-delete-btn" style="display: none;" onclick="batchDeleteProxies()">
+            <i class="bi bi-trash"></i> {{ _("proxies.batch_delete") }} (<span id="selected-count">0</span>)
+        </button>
         <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addProxyModal">
             <i class="bi bi-plus-lg"></i> {{ _("proxies.add_proxy") }}
         </button>
@@ -40,6 +43,9 @@
             <table class="table table-hover mb-0">
                 <thead class="table-light">
                     <tr>
+                        <th style="width: 40px;">
+                            <input type="checkbox" class="form-check-input" id="select-all" onchange="toggleSelectAll(this)">
+                        </th>
                         <th>{{ _("proxies.id") }}</th>
                         <th>{{ _("proxies.name") }}</th>
                         <th>{{ _("proxies.url") }}</th>
@@ -53,7 +59,7 @@
                 </thead>
                 <tbody id="proxies-table-body">
                     <tr>
-                        <td colspan="9" class="text-center py-4">{{ _("common.loading") }}</td>
+                        <td colspan="10" class="text-center py-4">{{ _("common.loading") }}</td>
                     </tr>
                 </tbody>
             </table>
@@ -147,15 +153,19 @@ async function loadProxies() {
     } catch (error) {
         console.error('Error loading proxies:', error);
         document.getElementById('proxies-table-body').innerHTML =
-            `<tr><td colspan="9" class="text-center text-danger">${t('common.error')}</td></tr>`;
+            `<tr><td colspan="10" class="text-center text-danger">${t('common.error')}</td></tr>`;
     }
 }
 
 function renderProxies(proxies) {
     const tbody = document.getElementById('proxies-table-body');
 
+    // Reset select all checkbox
+    document.getElementById('select-all').checked = false;
+    updateBatchDeleteButton();
+
     if (proxies.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted">${t('proxies.no_proxies')}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center text-muted">${t('proxies.no_proxies')}</td></tr>`;
         return;
     }
 
@@ -167,6 +177,9 @@ function renderProxies(proxies) {
 
         return `
             <tr>
+                <td>
+                    <input type="checkbox" class="form-check-input proxy-checkbox" value="${proxy.id}" onchange="updateBatchDeleteButton()">
+                </td>
                 <td>${proxy.id}</td>
                 <td>${proxy.name || '-'}</td>
                 <td><code>${maskUrl(proxy.url)}</code></td>
@@ -320,6 +333,64 @@ async function deleteProxy(proxyId) {
         const response = await fetch(`/api/proxies/${proxyId}`, { method: 'DELETE' });
         if (response.ok) {
             loadProxies();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+function toggleSelectAll(checkbox) {
+    const checkboxes = document.querySelectorAll('.proxy-checkbox');
+    checkboxes.forEach(cb => cb.checked = checkbox.checked);
+    updateBatchDeleteButton();
+}
+
+function getSelectedProxyIds() {
+    const checkboxes = document.querySelectorAll('.proxy-checkbox:checked');
+    return Array.from(checkboxes).map(cb => parseInt(cb.value));
+}
+
+function updateBatchDeleteButton() {
+    const selectedIds = getSelectedProxyIds();
+    const btn = document.getElementById('batch-delete-btn');
+    const countSpan = document.getElementById('selected-count');
+
+    if (selectedIds.length > 0) {
+        btn.style.display = 'inline-block';
+        countSpan.textContent = selectedIds.length;
+    } else {
+        btn.style.display = 'none';
+    }
+
+    // Update select all checkbox state
+    const allCheckboxes = document.querySelectorAll('.proxy-checkbox');
+    const selectAll = document.getElementById('select-all');
+    if (allCheckboxes.length > 0) {
+        selectAll.checked = selectedIds.length === allCheckboxes.length;
+        selectAll.indeterminate = selectedIds.length > 0 && selectedIds.length < allCheckboxes.length;
+    }
+}
+
+async function batchDeleteProxies() {
+    const selectedIds = getSelectedProxyIds();
+    if (selectedIds.length === 0) return;
+
+    if (!confirm(t('proxies.confirm_batch_delete').replace('{count}', selectedIds.length))) return;
+
+    try {
+        const response = await fetch('/api/proxies/batch-delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(selectedIds)
+        });
+
+        if (response.ok) {
+            const result = await response.json();
+            alert(t('proxies.batch_delete_success').replace('{count}', result.deleted));
+            loadProxies();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
         }
     } catch (error) {
         alert(t('common.error'));

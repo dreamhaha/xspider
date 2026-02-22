@@ -26,9 +26,11 @@ from xspider.core import (
 from xspider.core.config import TwitterToken
 from xspider.twitter.auth import TokenPool
 from xspider.twitter.endpoints import (
+    DMRequestBuilder,
     EndpointType,
     MutationRequestBuilder,
     RequestBuilder,
+    RestEndpoints,
     get_endpoint,
     is_mutation_endpoint,
 )
@@ -1009,6 +1011,174 @@ class TwitterGraphQLClient:
             return {
                 "can_reply": False,
                 "tweet_id": tweet_id,
+                "reason": str(e),
+            }
+
+    # ========================================================================
+    # Direct Message Operations
+    # ========================================================================
+
+    async def send_dm(
+        self,
+        recipient_id: str,
+        text: str,
+        media_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Send a direct message to a user.
+
+        Args:
+            recipient_id: Twitter user ID of the recipient.
+            text: Message text content.
+            media_id: Optional media ID to attach.
+
+        Returns:
+            Dictionary with DM data including message_id.
+
+        Raises:
+            ScrapingError: If the request fails.
+            AuthenticationError: If authentication fails.
+        """
+        # Get current user ID for conversation ID
+        current_user_id = await self._get_current_user_id()
+
+        payload = DMRequestBuilder.build_send_dm_to_user_payload(
+            recipient_id=recipient_id,
+            sender_id=current_user_id,
+            text=text,
+            media_id=media_id,
+        )
+
+        await self.rate_limiter.acquire("dm_send")
+
+        async with self._get_client() as client:
+            try:
+                response = await client.post(
+                    RestEndpoints.DM_NEW,
+                    data=payload,  # REST API uses form data, not JSON
+                    headers={
+                        **DEFAULT_HEADERS,
+                        "Content-Type": "application/x-www-form-urlencoded",
+                    },
+                )
+
+                if response.status_code == 403:
+                    raise AuthenticationError(
+                        "Cannot send DM: user may have DMs disabled or you are blocked"
+                    )
+
+                if response.status_code == 429:
+                    raise RateLimitError("DM rate limit exceeded")
+
+                if response.status_code != 200:
+                    raise ScrapingError(
+                        f"DM send failed with status {response.status_code}: {response.text}"
+                    )
+
+                data = response.json()
+
+                # Extract message details from response
+                entries = data.get("entries", [])
+                message_data = {}
+
+                for entry in entries:
+                    message = entry.get("message", {})
+                    if message:
+                        message_data = message.get("message_data", {})
+                        break
+
+                logger.info(
+                    "dm.sent",
+                    recipient_id=recipient_id,
+                    text_length=len(text),
+                )
+
+                return {
+                    "success": True,
+                    "recipient_id": recipient_id,
+                    "message_id": message_data.get("id"),
+                    "text": text,
+                    "created_at": message_data.get("time"),
+                    "raw_response": data,
+                }
+
+            except httpx.HTTPError as e:
+                logger.error("dm.send_failed", error=str(e))
+                raise ScrapingError(f"Failed to send DM: {e}") from e
+
+    async def _get_current_user_id(self) -> str:
+        """Get the current authenticated user's ID.
+
+        Returns:
+            The user ID string.
+
+        Raises:
+            AuthenticationError: If unable to get current user.
+        """
+        if not self._current_token:
+            await self._rotate_token()
+
+        if not self._current_token:
+            raise AuthenticationError("No valid token available")
+
+        # If we have the user ID cached in the token, use it
+        if hasattr(self._current_token, "user_id") and self._current_token.user_id:
+            return self._current_token.user_id
+
+        # Otherwise, we need to make a request to get the current user
+        # This uses the viewer endpoint
+        async with self._get_client() as client:
+            try:
+                response = await client.get(
+                    "https://x.com/i/api/1.1/account/verify_credentials.json",
+                    params={"skip_status": "true"},
+                )
+
+                if response.status_code != 200:
+                    raise AuthenticationError("Failed to get current user info")
+
+                data = response.json()
+                return str(data.get("id_str", data.get("id")))
+
+            except httpx.HTTPError as e:
+                raise AuthenticationError(f"Failed to get current user: {e}") from e
+
+    async def check_dm_availability(self, user_id: str) -> dict[str, Any]:
+        """Check if a user can receive DMs.
+
+        Args:
+            user_id: Twitter user ID to check.
+
+        Returns:
+            Dictionary with DM availability info.
+        """
+        try:
+            user_data = await self.get_user_by_id(user_id)
+            if not user_data:
+                return {
+                    "user_id": user_id,
+                    "can_dm": False,
+                    "reason": "User not found",
+                }
+
+            legacy = user_data.get("legacy", {})
+
+            # Check various DM-related fields
+            can_dm = legacy.get("can_dm", False)
+            protected = legacy.get("protected", False)
+
+            return {
+                "user_id": user_id,
+                "can_dm": can_dm,
+                "protected": protected,
+                "following": legacy.get("following", False),
+                "followed_by": legacy.get("followed_by", False),
+                "reason": None if can_dm else "DMs may be restricted",
+            }
+
+        except Exception as e:
+            return {
+                "user_id": user_id,
+                "can_dm": False,
                 "reason": str(e),
             }
 

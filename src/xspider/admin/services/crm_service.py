@@ -457,3 +457,63 @@ class CRMService:
         leads = list(result.scalars().all())
 
         return leads, total
+
+    async def create_lead(
+        self,
+        user_id: int,
+        twitter_handle: str,
+        source: str | None = None,
+        tags: list[str] | None = None,
+        notes: str | None = None,
+    ) -> SalesLead:
+        """Create a lead manually from Twitter handle."""
+        # Clean handle
+        twitter_handle = twitter_handle.lstrip("@").strip()
+
+        # Check if lead already exists
+        existing = await self.db.execute(
+            select(SalesLead).where(
+                SalesLead.user_id == user_id,
+                SalesLead.screen_name == twitter_handle,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise ValueError(f"Lead @{twitter_handle} already exists")
+
+        lead = SalesLead(
+            user_id=user_id,
+            screen_name=twitter_handle,
+            stage=LeadStage.NEW_LEAD,
+            tags=json.dumps(tags) if tags else None,
+            notes=notes,
+            source_influencer=source,
+            stage_updated_at=datetime.now(timezone.utc),
+        )
+
+        self.db.add(lead)
+        await self.db.commit()
+        await self.db.refresh(lead)
+
+        # Log activity
+        await self._log_activity(
+            lead_id=lead.id,
+            user_id=user_id,
+            activity_type="created",
+            description=f"Lead @{twitter_handle} created manually",
+        )
+
+        return lead
+
+    async def get_lead_by_id(
+        self,
+        lead_id: int,
+        user_id: int,
+    ) -> SalesLead | None:
+        """Get a lead by ID."""
+        result = await self.db.execute(
+            select(SalesLead).where(
+                SalesLead.id == lead_id,
+                SalesLead.user_id == user_id,
+            )
+        )
+        return result.scalar_one_or_none()

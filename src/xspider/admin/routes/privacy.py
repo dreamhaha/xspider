@@ -52,6 +52,7 @@ async def get_retention_policy(
 async def set_retention_policy(
     current_user: Annotated[AdminUser, Depends(get_current_active_user)],
     db: Annotated[AsyncSession, Depends(get_db_session)],
+    retention_days: int | None = None,  # Simple single value from UI
     search_results_days: int | None = None,
     commenter_data_days: int | None = None,
     lead_data_days: int | None = None,
@@ -61,6 +62,14 @@ async def set_retention_policy(
 ) -> dict[str, Any]:
     """Set data retention policy."""
     service = PrivacyService(db)
+
+    # If simple retention_days is provided, apply to all types
+    if retention_days is not None:
+        search_results_days = retention_days
+        commenter_data_days = retention_days
+        lead_data_days = retention_days
+        analytics_days = retention_days
+        webhook_logs_days = retention_days
 
     policy = await service.set_retention_policy(
         user_id=current_user.id,
@@ -111,6 +120,49 @@ async def export_user_data(
 
 
 # ==================== Data Deletion (GDPR) ====================
+
+
+@router.post("/export")
+async def export_user_data_post(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    format: str = "json",
+) -> JSONResponse:
+    """Export user data (POST version for UI compatibility)."""
+    service = PrivacyService(db)
+    data = await service.export_user_data(current_user.id)
+
+    if format == "csv":
+        # Return a message indicating CSV is not yet supported
+        return JSONResponse(
+            content={"message": "Data export initiated. Check your email."},
+        )
+
+    return JSONResponse(
+        content=data,
+        headers={
+            "Content-Disposition": f"attachment; filename=xspider_data_export_{current_user.id}.json"
+        },
+    )
+
+
+@router.delete("/delete")
+async def delete_user_data_simple(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """Delete all user data (simplified endpoint for UI)."""
+    service = PrivacyService(db)
+    stats = await service.delete_user_data(
+        user_id=current_user.id,
+        keep_transactions=True,
+    )
+
+    return {
+        "success": True,
+        "message": "Your data has been deleted",
+        "deleted_records": stats,
+    }
 
 
 @router.delete("/delete-my-data")

@@ -381,12 +381,22 @@ class SearchStage(str, PyEnum):
     """Search progress stage enumeration."""
 
     INITIALIZING = "initializing"  # 初始化
+    RESOLVING_SEEDS = "resolving_seeds"  # 解析种子用户
     SEARCHING_SEEDS = "searching_seeds"  # 搜索种子用户
     CRAWLING_FOLLOWERS = "crawling_followers"  # 爬取关注者
+    CRAWLING_COMMENTERS = "crawling_commenters"  # 爬取评论区互动账号
     BUILDING_GRAPH = "building_graph"  # 构建关系图
     CALCULATING_PAGERANK = "calculating_pagerank"  # 计算PageRank
     AI_ANALYZING = "ai_analyzing"  # AI分析
     FINALIZING = "finalizing"  # 完成中
+
+
+class CrawlMode(str, PyEnum):
+    """Search crawl mode enumeration."""
+
+    KEYWORDS = "keywords"  # 关键词搜索模式
+    SEEDS = "seeds"  # 指定种子用户模式
+    MIXED = "mixed"  # 混合模式
 
 
 class UserSearch(Base):
@@ -398,7 +408,7 @@ class UserSearch(Base):
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("admin_users.id", ondelete="CASCADE"), nullable=False
     )
-    keywords: Mapped[str] = mapped_column(Text, nullable=False)
+    keywords: Mapped[str | None] = mapped_column(Text)  # Optional for seed-only mode
     industry: Mapped[str | None] = mapped_column(String(100))
     crawl_depth: Mapped[int] = mapped_column(Integer, default=0)  # 0=仅种子, 1=一层关注, 2=二层关注
     seeds_found: Mapped[int] = mapped_column(Integer, default=0)
@@ -410,6 +420,17 @@ class UserSearch(Base):
     error_message: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    # Seed mode fields (种子模式字段)
+    seed_usernames: Mapped[str | None] = mapped_column(Text)  # JSON array ["user1", "user2"]
+    crawl_mode: Mapped[CrawlMode] = mapped_column(
+        Enum(CrawlMode), default=CrawlMode.KEYWORDS, nullable=False
+    )
+
+    # Commenter crawling options (评论区抓取选项)
+    crawl_commenters: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否抓取评论区互动账号
+    tweets_per_user: Mapped[int] = mapped_column(Integer, default=10)  # 每个用户抓取的推文数量
+    commenters_per_tweet: Mapped[int] = mapped_column(Integer, default=50)  # 每条推文抓取的评论者数量
 
     # Progress tracking fields (进度跟踪字段)
     progress_percent: Mapped[int] = mapped_column(Integer, default=0)  # 0-100
@@ -461,6 +482,14 @@ class DiscoveredInfluencer(Base):
     relevance_score: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    # Seed mode fields (种子模式字段)
+    is_seed: Mapped[bool] = mapped_column(Boolean, default=False)  # 是否为种子用户
+    discovered_from: Mapped[str | None] = mapped_column(String(50))  # 发现来源的 twitter_user_id
+    discovery_source: Mapped[str] = mapped_column(String(20), default="keyword")  # seed, keyword, following, comment
+
+    # Extracted links from bio (从简介中提取的链接)
+    extracted_links: Mapped[str | None] = mapped_column(Text)  # JSON array of extracted links
+
     # Relationships
     search: Mapped["UserSearch"] = relationship(back_populates="discovered_influencers")
     owner: Mapped["AdminUser"] = relationship()
@@ -470,6 +499,8 @@ class DiscoveredInfluencer(Base):
         Index("idx_discovered_influencers_pagerank", "pagerank_score"),
         Index("idx_discovered_influencers_hidden", "hidden_score"),
         Index("idx_discovered_influencers_depth", "depth"),
+        Index("idx_discovered_influencers_is_seed", "is_seed"),
+        Index("idx_discovered_influencers_discovery_source", "discovery_source"),
     )
 
 
@@ -1740,3 +1771,109 @@ class OperatingFollowerSnapshot(Base):
         Index("idx_op_follower_snapshots_account_id", "operating_account_id"),
         Index("idx_op_follower_snapshots_snapshot_at", "snapshot_at"),
     )
+
+
+# ============================================================================
+# Growth Operations System v2.0 - Enums (运营增长系统 2.0 枚举)
+# ============================================================================
+
+
+class HookCategory(str, PyEnum):
+    """Hook template categories (Hook模板分类)."""
+
+    CURIOSITY = "curiosity"  # 好奇心驱动
+    CONTROVERSY = "controversy"  # 争议性观点
+    STORYTELLING = "storytelling"  # 故事叙述
+    DATA_DRIVEN = "data_driven"  # 数据驱动
+    QUESTION = "question"  # 提问式
+    LIST = "list"  # 清单式
+    HOW_TO = "how_to"  # 教程式
+    BREAKING_NEWS = "breaking_news"  # 突发新闻
+    PERSONAL = "personal"  # 个人经历
+    PREDICTION = "prediction"  # 预测类
+
+
+class PostScheduleStatus(str, PyEnum):
+    """Scheduled post status (定时发布状态)."""
+
+    DRAFT = "draft"  # 草稿
+    SCHEDULED = "scheduled"  # 已排期
+    QUEUED = "queued"  # 队列中
+    POSTING = "posting"  # 发布中
+    POSTED = "posted"  # 已发布
+    FAILED = "failed"  # 失败
+    CANCELLED = "cancelled"  # 已取消
+
+
+class WatchPriority(str, PyEnum):
+    """Real-time watch priority (实时监控优先级)."""
+
+    LOW = "low"  # 低
+    MEDIUM = "medium"  # 中
+    HIGH = "high"  # 高
+    CRITICAL = "critical"  # 紧急
+
+
+class SupportActionType(str, PyEnum):
+    """Mutual support action types (互助动作类型)."""
+
+    LIKE = "like"  # 点赞
+    RETWEET = "retweet"  # 转推
+    QUOTE = "quote"  # 引用
+    REPLY = "reply"  # 回复
+    FOLLOW = "follow"  # 关注
+
+
+class WarmingStage(str, PyEnum):
+    """Account warming stage (账号养号阶段)."""
+
+    NEWBORN = "newborn"  # 新生期 0-7天
+    INFANT = "infant"  # 成长期 7-30天
+    GROWING = "growing"  # 发展期 30-90天
+    MATURE = "mature"  # 成熟期 90+天
+
+
+class IntentStrength(str, PyEnum):
+    """Intent signal strength (意图信号强度)."""
+
+    WEAK = "weak"  # 弱
+    MODERATE = "moderate"  # 中等
+    STRONG = "strong"  # 强
+    URGENT = "urgent"  # 紧急
+
+
+class ABTestStatus(str, PyEnum):
+    """A/B test status (A/B测试状态)."""
+
+    DRAFT = "draft"  # 草稿
+    RUNNING = "running"  # 运行中
+    PAUSED = "paused"  # 已暂停
+    COMPLETED = "completed"  # 已完成
+    CANCELLED = "cancelled"  # 已取消
+
+
+class RenewalType(str, PyEnum):
+    """Auto-renewal type (自动续推类型)."""
+
+    QUOTE = "quote"  # 引用转发
+    REPLY = "reply"  # 回复续推
+    REPOST = "repost"  # 原文转发
+
+
+class CampaignStatus(str, PyEnum):
+    """Campaign status (活动状态)."""
+
+    PENDING = "pending"  # 待执行
+    EXECUTING = "executing"  # 执行中
+    COMPLETED = "completed"  # 已完成
+    FAILED = "failed"  # 失败
+    CANCELLED = "cancelled"  # 已取消
+
+
+class WorkflowTriggerType(str, PyEnum):
+    """Workflow trigger type (工作流触发类型)."""
+
+    NEW_POST = "new_post"  # 新发布触发
+    SCHEDULE = "schedule"  # 定时触发
+    MANUAL = "manual"  # 手动触发
+    ENGAGEMENT_THRESHOLD = "engagement_threshold"  # 互动阈值触发

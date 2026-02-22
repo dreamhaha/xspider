@@ -92,6 +92,7 @@ async def list_api_keys(
             APIKeyResponse(
                 id=key.id,
                 key_id=key.key_id,
+                key_prefix=key.key_id[:8] if key.key_id else None,  # First 8 chars as prefix
                 name=key.name,
                 is_active=key.is_active,
                 created_at=key.created_at,
@@ -109,13 +110,25 @@ async def revoke_api_key(
     current_user: Annotated[AdminUser, Depends(get_current_active_user)],
     db: AsyncSession = Depends(get_db_session),
 ) -> dict:
-    """Revoke an API key by its key_id."""
-    result = await db.execute(
-        select(APIKey).where(
-            APIKey.key_id == key_id,
-            APIKey.user_id == current_user.id,
+    """Revoke an API key by its key_id or numeric id."""
+    # Try numeric ID first
+    try:
+        numeric_id = int(key_id)
+        result = await db.execute(
+            select(APIKey).where(
+                APIKey.id == numeric_id,
+                APIKey.user_id == current_user.id,
+            )
         )
-    )
+    except ValueError:
+        # Treat as key_id string
+        result = await db.execute(
+            select(APIKey).where(
+                APIKey.key_id == key_id,
+                APIKey.user_id == current_user.id,
+            )
+        )
+
     api_key = result.scalar_one_or_none()
 
     if not api_key:

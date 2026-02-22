@@ -1,0 +1,353 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("targeted_comment.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-bullseye"></i> {{ _("targeted_comment.title") }}</h2>
+        <p class="text-muted">{{ _("targeted_comment.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateCommentModal">
+            <i class="bi bi-magic"></i> {{ _("targeted_comment.generate_comment") }}
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" id="status-filter" onchange="loadComments()">
+            <option value="">{{ _("common.all") }}</option>
+            <option value="pending">{{ _("targeted_comment.pending") }}</option>
+            <option value="posted">{{ _("targeted_comment.posted") }}</option>
+        </select>
+    </div>
+</div>
+
+<!-- Comments Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>{{ _("targeted_comment.target_tweet_url") }}</th>
+                        <th>{{ _("targeted_comment.comment_content") }}</th>
+                        <th>{{ _("common.status") }}</th>
+                        <th>{{ _("common.created_at") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="comments-table-body">
+                    <tr>
+                        <td colspan="6" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Generate Comment Modal -->
+<div class="modal fade" id="generateCommentModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("targeted_comment.generate_comment") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return generateComment(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("targeted_comment.target_tweet_url") }}</label>
+                        <input type="text" class="form-control" id="target-tweet-url" required placeholder="https://twitter.com/user/status/123456789">
+                    </div>
+                    <div class="mb-3">
+                        <button type="button" class="btn btn-outline-secondary" onclick="checkPermission()">
+                            <i class="bi bi-shield-check"></i> {{ _("targeted_comment.check_permission") }}
+                        </button>
+                        <span id="permission-status" class="ms-2"></span>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Operating Account</label>
+                        <select class="form-select" id="operating-account" required>
+                            <option value="">Select account...</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("openers.context") }} ({{ _("common.optional") }})</label>
+                        <textarea class="form-control" id="context" rows="2" placeholder="What should the comment convey?"></textarea>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("targeted_comment.comment_content") }}</label>
+                        <textarea class="form-control" id="comment-content" rows="3" readonly></textarea>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-primary" onclick="generateCommentContent()">
+                                <i class="bi bi-magic"></i> Generate
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="regenerateCommentContent()">
+                                <i class="bi bi-arrow-clockwise"></i> {{ _("targeted_comment.regenerate") }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary" id="btn-post-comment" disabled>
+                        <i class="bi bi-send"></i> {{ _("targeted_comment.post_comment") }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadComments() {
+    const statusFilter = document.getElementById('status-filter').value;
+    let url = '/api/targeted-comment/';
+    if (statusFilter) url += `?status=${statusFilter}`;
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load comments');
+
+        const data = await response.json();
+        renderComments(data.comments || data);
+    } catch (error) {
+        console.error('Error loading comments:', error);
+        document.getElementById('comments-table-body').innerHTML =
+            `<tr><td colspan="6" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderComments(comments) {
+    const tbody = document.getElementById('comments-table-body');
+
+    if (!comments || comments.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">${t('targeted_comment.no_comments')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = comments.map(c => {
+        const statusBadge = c.status === 'posted'
+            ? `<span class="badge bg-success">${t('targeted_comment.posted')}</span>`
+            : `<span class="badge bg-warning text-dark">${t('targeted_comment.pending')}</span>`;
+
+        return `
+            <tr>
+                <td>${c.id}</td>
+                <td>
+                    <a href="${c.target_tweet_url}" target="_blank" class="text-truncate d-inline-block" style="max-width: 200px;">
+                        ${c.target_tweet_url}
+                    </a>
+                </td>
+                <td class="text-truncate" style="max-width: 250px;">${escapeHtml(c.content)}</td>
+                <td>${statusBadge}</td>
+                <td>${formatDate(c.created_at)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        ${c.status === 'pending' ? `
+                        <button class="btn btn-outline-success" onclick="postComment(${c.id})" title="${t('targeted_comment.post_comment')}">
+                            <i class="bi bi-send"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="regenerateComment(${c.id})" title="${t('targeted_comment.regenerate')}">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        ` : ''}
+                        <button class="btn btn-outline-danger" onclick="deleteComment(${c.id})" title="${t('common.delete')}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleString();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function loadOperatingAccounts() {
+    try {
+        const response = await fetch('/api/operating-accounts/');
+        const data = await response.json();
+        const accounts = data.accounts || data;
+
+        const select = document.getElementById('operating-account');
+        accounts.forEach(acc => {
+            const option = document.createElement('option');
+            option.value = acc.id;
+            option.textContent = '@' + acc.screen_name;
+            select.appendChild(option);
+        });
+    } catch (error) {
+        console.error('Error loading accounts:', error);
+    }
+}
+
+async function checkPermission() {
+    const tweetUrl = document.getElementById('target-tweet-url').value;
+    const accountId = document.getElementById('operating-account').value;
+
+    if (!tweetUrl || !accountId) {
+        alert('Please enter tweet URL and select an account');
+        return;
+    }
+
+    const statusEl = document.getElementById('permission-status');
+    statusEl.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking...';
+
+    try {
+        const response = await fetch('/api/targeted-comment/check-permission', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tweet_url: tweetUrl,
+                operating_account_id: parseInt(accountId)
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.can_comment) {
+            statusEl.innerHTML = `<span class="badge bg-success">${t('targeted_comment.can_comment')}</span>`;
+            document.getElementById('btn-post-comment').disabled = false;
+        } else {
+            statusEl.innerHTML = `<span class="badge bg-danger">${t('targeted_comment.cannot_comment')}</span>
+                                  <small class="text-muted ms-1">${data.reason || ''}</small>`;
+            document.getElementById('btn-post-comment').disabled = true;
+        }
+    } catch (error) {
+        statusEl.innerHTML = `<span class="badge bg-danger">${t('common.error')}</span>`;
+    }
+}
+
+async function generateCommentContent() {
+    const tweetUrl = document.getElementById('target-tweet-url').value;
+    const context = document.getElementById('context').value;
+
+    if (!tweetUrl) {
+        alert('Please enter tweet URL');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/targeted-comment/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                tweet_url: tweetUrl,
+                context: context || null
+            })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            document.getElementById('comment-content').value = data.content;
+        } else {
+            alert(t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function regenerateCommentContent() {
+    await generateCommentContent();
+}
+
+async function generateComment(event) {
+    event.preventDefault();
+
+    const data = {
+        tweet_url: document.getElementById('target-tweet-url').value,
+        content: document.getElementById('comment-content').value,
+        operating_account_id: parseInt(document.getElementById('operating-account').value)
+    };
+
+    if (!data.content) {
+        alert('Please generate comment content first');
+        return false;
+    }
+
+    try {
+        const response = await fetch('/api/targeted-comment/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('generateCommentModal')).hide();
+            loadComments();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function postComment(commentId) {
+    try {
+        const response = await fetch(`/api/targeted-comment/${commentId}/post`, { method: 'POST' });
+        if (response.ok) {
+            loadComments();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function regenerateComment(commentId) {
+    try {
+        const response = await fetch(`/api/targeted-comment/${commentId}/regenerate`, { method: 'POST' });
+        if (response.ok) {
+            loadComments();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function deleteComment(commentId) {
+    if (!confirm(t('common.confirm_delete'))) return;
+
+    try {
+        const response = await fetch(`/api/targeted-comment/${commentId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadComments();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadComments();
+    loadOperatingAccounts();
+});
+</script>
+{% endblock %}

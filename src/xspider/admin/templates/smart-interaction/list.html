@@ -1,0 +1,449 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("smart_interaction.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-chat-heart"></i> {{ _("smart_interaction.title") }}</h2>
+        <p class="text-muted">{{ _("smart_interaction.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateModal">
+            <i class="bi bi-magic"></i> {{ _("smart_interaction.generate_interaction") }}
+        </button>
+        <button class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#addToListModal">
+            <i class="bi bi-plus-lg"></i> {{ _("smart_interaction.add_to_list") }}
+        </button>
+    </div>
+</div>
+
+<!-- Navigation Tabs -->
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <a class="nav-link active" data-bs-toggle="tab" href="#pending">
+            <i class="bi bi-hourglass-split"></i> {{ _("smart_interaction.pending_interactions") }}
+            <span class="badge bg-warning text-dark" id="pending-count">0</span>
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#follow-list">
+            <i class="bi bi-list-check"></i> {{ _("smart_interaction.follow_list") }}
+        </a>
+    </li>
+    <li class="nav-item">
+        <a class="nav-link" data-bs-toggle="tab" href="#history">
+            <i class="bi bi-clock-history"></i> {{ _("smart_interaction.interaction_history") }}
+        </a>
+    </li>
+</ul>
+
+<div class="tab-content">
+    <!-- Pending Interactions Tab -->
+    <div class="tab-pane fade show active" id="pending">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>{{ _("smart_interaction.interaction_type") }}</th>
+                                <th>{{ _("smart_interaction.target_user") }}</th>
+                                <th>{{ _("smart_interaction.content") }}</th>
+                                <th>{{ _("common.actions") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="pending-table-body">
+                            <tr><td colspan="5" class="text-center py-4">{{ _("common.loading") }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Follow List Tab -->
+    <div class="tab-pane fade" id="follow-list">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>User</th>
+                                <th>Followers</th>
+                                <th>Source</th>
+                                <th>Added At</th>
+                                <th>{{ _("common.actions") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="follow-list-body">
+                            <tr><td colspan="5" class="text-center py-4">{{ _("common.loading") }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Tab -->
+    <div class="tab-pane fade" id="history">
+        <div class="card">
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>ID</th>
+                                <th>{{ _("smart_interaction.interaction_type") }}</th>
+                                <th>{{ _("smart_interaction.target_user") }}</th>
+                                <th>{{ _("common.status") }}</th>
+                                <th>{{ _("common.created_at") }}</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <tr><td colspan="5" class="text-center py-4">{{ _("common.loading") }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Generate Interaction Modal -->
+<div class="modal fade" id="generateModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("smart_interaction.generate_interaction") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return generateInteraction(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("smart_interaction.interaction_type") }}</label>
+                        <select class="form-select" id="interaction-type" required>
+                            <option value="reply">{{ _("smart_interaction.reply") }}</option>
+                            <option value="like">{{ _("smart_interaction.like") }}</option>
+                            <option value="retweet">{{ _("smart_interaction.retweet") }}</option>
+                            <option value="follow">{{ _("smart_interaction.follow") }}</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("smart_interaction.target_user") }}</label>
+                        <div class="input-group">
+                            <span class="input-group-text">@</span>
+                            <input type="text" class="form-control" id="target-user" required>
+                        </div>
+                    </div>
+                    <div class="mb-3" id="target-tweet-group">
+                        <label class="form-label">{{ _("smart_interaction.target_tweet") }} URL</label>
+                        <input type="text" class="form-control" id="target-tweet" placeholder="https://twitter.com/...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("smart_interaction.generate_interaction") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Add to List Modal -->
+<div class="modal fade" id="addToListModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("smart_interaction.add_to_list") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return addToFollowList(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("smart_interaction.target_user") }}</label>
+                        <div class="input-group">
+                            <span class="input-group-text">@</span>
+                            <input type="text" class="form-control" id="list-user" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("crm.source") }}</label>
+                        <input type="text" class="form-control" id="list-source" placeholder="Search #123, Monitor, etc.">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("smart_interaction.add_to_list") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadPendingInteractions() {
+    try {
+        const response = await fetch('/api/smart-interaction/?status=pending');
+        if (!response.ok) throw new Error('Failed to load interactions');
+
+        const data = await response.json();
+        const interactions = data.interactions || data;
+        document.getElementById('pending-count').textContent = interactions.length;
+        renderPendingTable(interactions);
+    } catch (error) {
+        console.error('Error loading pending interactions:', error);
+    }
+}
+
+function renderPendingTable(interactions) {
+    const tbody = document.getElementById('pending-table-body');
+
+    if (!interactions || interactions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${t('smart_interaction.no_interactions')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = interactions.map(i => `
+        <tr>
+            <td>${i.id}</td>
+            <td><span class="badge bg-primary">${getTypeLabel(i.type)}</span></td>
+            <td>@${i.target_user}</td>
+            <td class="text-truncate" style="max-width: 200px;">${escapeHtml(i.content || '-')}</td>
+            <td>
+                <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-success" onclick="approveInteraction(${i.id})" title="${t('smart_interaction.approve')}">
+                        <i class="bi bi-check-lg"></i>
+                    </button>
+                    <button class="btn btn-outline-danger" onclick="rejectInteraction(${i.id})" title="${t('smart_interaction.reject')}">
+                        <i class="bi bi-x-lg"></i>
+                    </button>
+                    <button class="btn btn-outline-primary" onclick="executeInteraction(${i.id})" title="${t('smart_interaction.execute')}">
+                        <i class="bi bi-play-fill"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function loadFollowList() {
+    try {
+        const response = await fetch('/api/smart-interaction/follow-list');
+        if (!response.ok) throw new Error('Failed to load follow list');
+
+        const data = await response.json();
+        renderFollowList(data.users || data);
+    } catch (error) {
+        console.error('Error loading follow list:', error);
+    }
+}
+
+function renderFollowList(users) {
+    const tbody = document.getElementById('follow-list-body');
+
+    if (!users || users.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${t('analytics.no_data')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = users.map(u => `
+        <tr>
+            <td>
+                <img src="${u.profile_image_url || '/static/img/default-avatar.png'}"
+                     class="rounded-circle me-2" width="24" height="24" alt="">
+                @${u.screen_name}
+            </td>
+            <td>${formatNumber(u.followers_count || 0)}</td>
+            <td>${u.source || '-'}</td>
+            <td>${formatDate(u.added_at)}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-danger" onclick="removeFromList(${u.id})">
+                    <i class="bi bi-trash"></i>
+                </button>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function loadHistory() {
+    try {
+        const response = await fetch('/api/smart-interaction/?status=executed,rejected');
+        if (!response.ok) throw new Error('Failed to load history');
+
+        const data = await response.json();
+        renderHistoryTable(data.interactions || data);
+    } catch (error) {
+        console.error('Error loading history:', error);
+    }
+}
+
+function renderHistoryTable(interactions) {
+    const tbody = document.getElementById('history-table-body');
+
+    if (!interactions || interactions.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="5" class="text-center text-muted">${t('smart_interaction.no_interactions')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = interactions.map(i => {
+        const statusBadge = {
+            'executed': `<span class="badge bg-success">${t('smart_interaction.executed')}</span>`,
+            'rejected': `<span class="badge bg-danger">${t('smart_interaction.rejected')}</span>`,
+            'approved': `<span class="badge bg-primary">${t('smart_interaction.approved')}</span>`
+        };
+
+        return `
+            <tr>
+                <td>${i.id}</td>
+                <td><span class="badge bg-primary">${getTypeLabel(i.type)}</span></td>
+                <td>@${i.target_user}</td>
+                <td>${statusBadge[i.status] || i.status}</td>
+                <td>${formatDate(i.created_at)}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getTypeLabel(type) {
+    const labels = {
+        'like': t('smart_interaction.like'),
+        'reply': t('smart_interaction.reply'),
+        'retweet': t('smart_interaction.retweet'),
+        'follow': t('smart_interaction.follow')
+    };
+    return labels[type] || type;
+}
+
+function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleString();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function generateInteraction(event) {
+    event.preventDefault();
+
+    const data = {
+        type: document.getElementById('interaction-type').value,
+        target_user: document.getElementById('target-user').value,
+        target_tweet_url: document.getElementById('target-tweet').value || null
+    };
+
+    try {
+        const response = await fetch('/api/smart-interaction/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('generateModal')).hide();
+            loadPendingInteractions();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function addToFollowList(event) {
+    event.preventDefault();
+
+    const data = {
+        screen_name: document.getElementById('list-user').value,
+        source: document.getElementById('list-source').value
+    };
+
+    try {
+        const response = await fetch('/api/smart-interaction/follow-list', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addToListModal')).hide();
+            loadFollowList();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function approveInteraction(id) {
+    try {
+        const response = await fetch(`/api/smart-interaction/${id}/approve`, { method: 'POST' });
+        if (response.ok) loadPendingInteractions();
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function rejectInteraction(id) {
+    try {
+        const response = await fetch(`/api/smart-interaction/${id}/reject`, { method: 'POST' });
+        if (response.ok) loadPendingInteractions();
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function executeInteraction(id) {
+    try {
+        const response = await fetch(`/api/smart-interaction/${id}/execute`, { method: 'POST' });
+        if (response.ok) {
+            loadPendingInteractions();
+            loadHistory();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function removeFromList(id) {
+    try {
+        const response = await fetch(`/api/smart-interaction/follow-list/${id}`, { method: 'DELETE' });
+        if (response.ok) loadFollowList();
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+// Tab change handlers
+document.querySelectorAll('a[data-bs-toggle="tab"]').forEach(tab => {
+    tab.addEventListener('shown.bs.tab', (e) => {
+        const target = e.target.getAttribute('href');
+        if (target === '#follow-list') loadFollowList();
+        if (target === '#history') loadHistory();
+    });
+});
+
+document.addEventListener('DOMContentLoaded', loadPendingInteractions);
+</script>
+{% endblock %}

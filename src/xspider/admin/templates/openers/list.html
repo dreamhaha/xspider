@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("openers.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-lightning"></i> {{ _("openers.title") }}</h2>
+        <p class="text-muted">{{ _("openers.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#generateOpenerModal">
+            <i class="bi bi-magic"></i> {{ _("openers.generate_opener") }}
+        </button>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 id="stat-total">0</h3>
+                <small class="text-muted">{{ _("openers.total_generated") }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 id="stat-used" class="text-primary">0</h3>
+                <small class="text-muted">{{ _("openers.used_count") }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 id="stat-replied" class="text-success">0</h3>
+                <small class="text-muted">{{ _("openers.replied") }}</small>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-center">
+            <div class="card-body">
+                <h3 id="stat-reply-rate">0%</h3>
+                <small class="text-muted">{{ _("openers.reply_rate") }}</small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" id="status-filter" onchange="loadOpeners()">
+            <option value="">{{ _("common.all") }}</option>
+            <option value="unused">{{ _("openers.unused") }}</option>
+            <option value="used">{{ _("openers.used") }}</option>
+            <option value="replied">{{ _("openers.replied") }}</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <input type="text" class="form-control" id="search-input" placeholder="{{ _('common.search') }}" onkeyup="loadOpeners()">
+    </div>
+</div>
+
+<!-- Openers Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>{{ _("openers.target_user") }}</th>
+                        <th>{{ _("openers.generated_opener") }}</th>
+                        <th>{{ _("common.status") }}</th>
+                        <th>{{ _("common.created_at") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="openers-table-body">
+                    <tr>
+                        <td colspan="6" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Generate Opener Modal -->
+<div class="modal fade" id="generateOpenerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("openers.generate_opener") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return generateOpener(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("openers.target_user") }}</label>
+                        <div class="input-group">
+                            <span class="input-group-text">@</span>
+                            <input type="text" class="form-control" id="target-user" required>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("openers.context") }} ({{ _("common.optional") }})</label>
+                        <textarea class="form-control" id="context" rows="3" placeholder="Additional context about the user or conversation goal..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("openers.generate_opener") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- View Opener Modal -->
+<div class="modal fade" id="viewOpenerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="view-opener-title">Opener</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">{{ _("openers.target_user") }}</label>
+                    <p id="view-target-user" class="form-control-plaintext"></p>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">{{ _("openers.generated_opener") }}</label>
+                    <div class="p-3 bg-light rounded" id="view-opener-content"></div>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary" onclick="copyOpener()">
+                        <i class="bi bi-clipboard"></i> Copy
+                    </button>
+                    <button class="btn btn-outline-success" id="btn-mark-used" onclick="markUsed()">
+                        <i class="bi bi-check"></i> {{ _("openers.mark_used") }}
+                    </button>
+                    <button class="btn btn-outline-info" id="btn-mark-replied" onclick="markReplied()">
+                        <i class="bi bi-reply"></i> {{ _("openers.mark_replied") }}
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentOpenerId = null;
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/openers/stats');
+        if (!response.ok) return;
+
+        const stats = await response.json();
+        document.getElementById('stat-total').textContent = stats.total || 0;
+        document.getElementById('stat-used').textContent = stats.used || 0;
+        document.getElementById('stat-replied').textContent = stats.replied || 0;
+        document.getElementById('stat-reply-rate').textContent = (stats.reply_rate || 0) + '%';
+    } catch (error) {
+        console.error('Error loading stats:', error);
+    }
+}
+
+async function loadOpeners() {
+    const statusFilter = document.getElementById('status-filter').value;
+    const searchInput = document.getElementById('search-input').value;
+
+    let url = '/api/openers/?';
+    const params = [];
+    if (statusFilter) params.push(`status=${statusFilter}`);
+    if (searchInput) params.push(`search=${encodeURIComponent(searchInput)}`);
+    url += params.join('&');
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load openers');
+
+        const data = await response.json();
+        renderOpeners(data.openers || data);
+    } catch (error) {
+        console.error('Error loading openers:', error);
+        document.getElementById('openers-table-body').innerHTML =
+            `<tr><td colspan="6" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderOpeners(openers) {
+    const tbody = document.getElementById('openers-table-body');
+
+    if (!openers || openers.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center text-muted">${t('openers.no_openers')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = openers.map(o => {
+        const statusBadge = getStatusBadge(o.status);
+
+        return `
+            <tr>
+                <td>${o.id}</td>
+                <td>@${o.target_user}</td>
+                <td class="text-truncate" style="max-width: 300px;">${escapeHtml(o.content)}</td>
+                <td>${statusBadge}</td>
+                <td>${formatDate(o.created_at)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="viewOpener(${o.id})" title="${t('common.view')}">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button class="btn btn-outline-secondary" onclick="regenerateOpener(${o.id})" title="${t('openers.regenerate')}">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                        <button class="btn btn-outline-danger" onclick="deleteOpener(${o.id})" title="${t('common.delete')}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getStatusBadge(status) {
+    const badges = {
+        'unused': `<span class="badge bg-secondary">${t('openers.unused')}</span>`,
+        'used': `<span class="badge bg-primary">${t('openers.used')}</span>`,
+        'replied': `<span class="badge bg-success">${t('openers.replied')}</span>`
+    };
+    return badges[status] || status;
+}
+
+function formatDate(dateStr) {
+    if (!dateStr) return '-';
+    return new Date(dateStr).toLocaleString();
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+async function generateOpener(event) {
+    event.preventDefault();
+
+    const data = {
+        target_user: document.getElementById('target-user').value,
+        context: document.getElementById('context').value || null
+    };
+
+    try {
+        const response = await fetch('/api/openers/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('generateOpenerModal')).hide();
+            loadOpeners();
+            loadStats();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function viewOpener(openerId) {
+    currentOpenerId = openerId;
+
+    try {
+        const response = await fetch(`/api/openers/${openerId}`);
+        const opener = await response.json();
+
+        document.getElementById('view-opener-title').textContent = `Opener #${opener.id}`;
+        document.getElementById('view-target-user').textContent = '@' + opener.target_user;
+        document.getElementById('view-opener-content').textContent = opener.content;
+
+        // Update button states
+        const usedBtn = document.getElementById('btn-mark-used');
+        const repliedBtn = document.getElementById('btn-mark-replied');
+
+        usedBtn.disabled = opener.status !== 'unused';
+        repliedBtn.disabled = opener.status === 'replied';
+
+        new bootstrap.Modal(document.getElementById('viewOpenerModal')).show();
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+function copyOpener() {
+    const content = document.getElementById('view-opener-content').textContent;
+    navigator.clipboard.writeText(content).then(() => {
+        alert('Copied to clipboard!');
+    });
+}
+
+async function markUsed() {
+    if (!currentOpenerId) return;
+
+    try {
+        const response = await fetch(`/api/openers/${currentOpenerId}/mark-used`, { method: 'POST' });
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('viewOpenerModal')).hide();
+            loadOpeners();
+            loadStats();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function markReplied() {
+    if (!currentOpenerId) return;
+
+    try {
+        const response = await fetch(`/api/openers/${currentOpenerId}/mark-replied`, { method: 'POST' });
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('viewOpenerModal')).hide();
+            loadOpeners();
+            loadStats();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function regenerateOpener(openerId) {
+    try {
+        const response = await fetch(`/api/openers/${openerId}/regenerate`, { method: 'POST' });
+        if (response.ok) {
+            loadOpeners();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function deleteOpener(openerId) {
+    if (!confirm(t('common.confirm_delete'))) return;
+
+    try {
+        const response = await fetch(`/api/openers/${openerId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadOpeners();
+            loadStats();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadStats();
+    loadOpeners();
+});
+</script>
+{% endblock %}

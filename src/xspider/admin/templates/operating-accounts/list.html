@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("operating_accounts.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h2><i class="bi bi-person-badge"></i> {{ _("operating_accounts.title") }}</h2>
+        <p class="text-muted">{{ _("operating_accounts.description") }}</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAccountModal">
+            <i class="bi bi-plus-lg"></i> {{ _("operating_accounts.add_account") }}
+        </button>
+        <button class="btn btn-outline-secondary" onclick="batchCheckShadowban()">
+            <i class="bi bi-shield-check"></i> {{ _("operating_accounts.batch_check") }}
+        </button>
+    </div>
+</div>
+
+<!-- Filters -->
+<div class="row mb-3">
+    <div class="col-md-3">
+        <select class="form-select" id="shadowban-filter" onchange="loadAccounts()">
+            <option value="">{{ _("common.all") }}</option>
+            <option value="clean">{{ _("operating_accounts.clean") }}</option>
+            <option value="search_ban">{{ _("operating_accounts.search_ban") }}</option>
+            <option value="reply_ban">{{ _("operating_accounts.reply_ban") }}</option>
+            <option value="ghost_ban">{{ _("operating_accounts.ghost_ban") }}</option>
+        </select>
+    </div>
+    <div class="col-md-4">
+        <input type="text" class="form-control" id="search-input" placeholder="{{ _('common.search') }}" onkeyup="loadAccounts()">
+    </div>
+</div>
+
+<!-- Accounts Table -->
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>ID</th>
+                        <th>{{ _("operating_accounts.screen_name") }}</th>
+                        <th>{{ _("operating_accounts.followers") }}</th>
+                        <th>{{ _("operating_accounts.following") }}</th>
+                        <th>{{ _("operating_accounts.shadowban_status") }}</th>
+                        <th>{{ _("operating_accounts.risk_score") }}</th>
+                        <th>{{ _("operating_accounts.last_checked") }}</th>
+                        <th>{{ _("common.actions") }}</th>
+                    </tr>
+                </thead>
+                <tbody id="accounts-table-body">
+                    <tr>
+                        <td colspan="8" class="text-center py-4">{{ _("common.loading") }}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Add Account Modal -->
+<div class="modal fade" id="addAccountModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">{{ _("operating_accounts.add_account") }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form onsubmit="return addAccount(event)">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("operating_accounts.screen_name") }}</label>
+                        <div class="input-group">
+                            <span class="input-group-text">@</span>
+                            <input type="text" class="form-control" id="screen-name" required placeholder="username">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("accounts.bearer_token") }}</label>
+                        <textarea class="form-control" id="bearer-token" rows="2" required></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("accounts.ct0_token") }}</label>
+                        <input type="text" class="form-control" id="ct0" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">{{ _("accounts.auth_token") }}</label>
+                        <input type="text" class="form-control" id="auth-token" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">{{ _("common.cancel") }}</button>
+                    <button type="submit" class="btn btn-primary">{{ _("operating_accounts.add_account") }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+async function loadAccounts() {
+    const shadowbanFilter = document.getElementById('shadowban-filter').value;
+    const searchInput = document.getElementById('search-input').value;
+
+    let url = '/api/operating-accounts/?';
+    const params = [];
+    if (shadowbanFilter) params.push(`shadowban_status=${shadowbanFilter}`);
+    if (searchInput) params.push(`search=${encodeURIComponent(searchInput)}`);
+    url += params.join('&');
+
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error('Failed to load accounts');
+
+        const data = await response.json();
+        renderAccounts(data.accounts || data);
+    } catch (error) {
+        console.error('Error loading accounts:', error);
+        document.getElementById('accounts-table-body').innerHTML =
+            `<tr><td colspan="8" class="text-center text-danger">${t('common.error')}</td></tr>`;
+    }
+}
+
+function renderAccounts(accounts) {
+    const tbody = document.getElementById('accounts-table-body');
+
+    if (!accounts || accounts.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center text-muted">${t('operating_accounts.no_accounts')}</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = accounts.map(account => {
+        const shadowbanBadge = getShadowbanBadge(account.shadowban_status);
+        const riskBadge = getRiskBadge(account.risk_score);
+        const lastChecked = account.last_checked_at ? formatDate(account.last_checked_at) : t('common.never');
+
+        return `
+            <tr>
+                <td>${account.id}</td>
+                <td>
+                    <a href="/admin/operating-accounts/${account.id}">@${account.screen_name}</a>
+                </td>
+                <td>${formatNumber(account.followers_count || 0)}</td>
+                <td>${formatNumber(account.following_count || 0)}</td>
+                <td>${shadowbanBadge}</td>
+                <td>${riskBadge}</td>
+                <td>${lastChecked}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary" onclick="checkShadowban(${account.id})" title="${t('operating_accounts.check_shadowban')}">
+                            <i class="bi bi-shield-check"></i>
+                        </button>
+                        <a href="/admin/operating-accounts/${account.id}" class="btn btn-outline-secondary" title="${t('common.view')}">
+                            <i class="bi bi-eye"></i>
+                        </a>
+                        <button class="btn btn-outline-danger" onclick="deleteAccount(${account.id})" title="${t('common.delete')}">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function getShadowbanBadge(status) {
+    const badges = {
+        'clean': `<span class="badge bg-success">${t('operating_accounts.clean')}</span>`,
+        'search_ban': `<span class="badge bg-warning">${t('operating_accounts.search_ban')}</span>`,
+        'reply_ban': `<span class="badge bg-danger">${t('operating_accounts.reply_ban')}</span>`,
+        'ghost_ban': `<span class="badge bg-dark">${t('operating_accounts.ghost_ban')}</span>`
+    };
+    return badges[status] || `<span class="badge bg-secondary">${t('common.unknown')}</span>`;
+}
+
+function getRiskBadge(score) {
+    if (score === null || score === undefined) {
+        return `<span class="badge bg-secondary">-</span>`;
+    }
+    if (score < 30) return `<span class="badge bg-success">${score}</span>`;
+    if (score < 60) return `<span class="badge bg-warning">${score}</span>`;
+    return `<span class="badge bg-danger">${score}</span>`;
+}
+
+function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+}
+
+async function addAccount(event) {
+    event.preventDefault();
+
+    const data = {
+        screen_name: document.getElementById('screen-name').value,
+        bearer_token: document.getElementById('bearer-token').value,
+        ct0: document.getElementById('ct0').value,
+        auth_token: document.getElementById('auth-token').value
+    };
+
+    try {
+        const response = await fetch('/api/operating-accounts/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        if (response.ok) {
+            bootstrap.Modal.getInstance(document.getElementById('addAccountModal')).hide();
+            loadAccounts();
+        } else {
+            const error = await response.json();
+            alert(error.detail || t('common.operation_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+
+    return false;
+}
+
+async function checkShadowban(accountId) {
+    try {
+        const btn = event.target.closest('button');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        const response = await fetch(`/api/operating-accounts/${accountId}/check-shadowban`, { method: 'POST' });
+        if (response.ok) {
+            loadAccounts();
+        } else {
+            alert(t('operating_accounts.check_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function batchCheckShadowban() {
+    if (!confirm(t('accounts.confirm_check_all'))) return;
+
+    try {
+        const response = await fetch('/api/operating-accounts/batch-check-shadowban', { method: 'POST' });
+        if (response.ok) {
+            alert(t('common.operation_success'));
+            loadAccounts();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+async function deleteAccount(accountId) {
+    if (!confirm(t('operating_accounts.confirm_delete'))) return;
+
+    try {
+        const response = await fetch(`/api/operating-accounts/${accountId}`, { method: 'DELETE' });
+        if (response.ok) {
+            loadAccounts();
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadAccounts);
+</script>
+{% endblock %}

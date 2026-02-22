@@ -16,6 +16,128 @@ from xspider.admin.services import (
 router = APIRouter(prefix="/analytics", tags=["Analytics"])
 
 
+# ==================== Overview ====================
+
+
+@router.get("/overview")
+async def get_analytics_overview(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+) -> dict[str, Any]:
+    """Get analytics overview with intent distribution."""
+    analyzer = IntentAnalyzer(db)
+
+    # Get intent summary stats
+    stats = await analyzer.get_overview_stats(current_user.id)
+
+    return {
+        "high_intent": stats.get("high_intent", 0),
+        "medium_intent": stats.get("medium_intent", 0),
+        "low_intent": stats.get("low_intent", 0),
+        "total_analyzed": stats.get("total_analyzed", 0),
+        "high_intent_users": stats.get("high_intent_users", []),
+    }
+
+
+@router.get("/intent")
+async def get_intent_users(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    level: str | None = None,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+) -> dict[str, Any]:
+    """Get users by intent level."""
+    analyzer = IntentAnalyzer(db)
+
+    # Map level string to IntentLabel
+    intent_labels = None
+    if level:
+        level_map = {
+            "high": [IntentLabel.LOOKING_FOR_SOLUTION, IntentLabel.ASKING_PRICE],
+            "medium": [IntentLabel.INTERESTED, IntentLabel.COMPLAINING],
+            "low": [IntentLabel.NEUTRAL],
+        }
+        intent_labels = level_map.get(level.lower())
+
+    users = await analyzer.get_intent_users(
+        user_id=current_user.id,
+        intent_labels=intent_labels,
+        page=page,
+        page_size=page_size,
+    )
+
+    return {"users": users}
+
+
+@router.get("/growth/{account_id}")
+async def get_account_growth(
+    account_id: int,
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    days: int = Query(30, ge=1, le=365),
+) -> dict[str, Any]:
+    """Get growth history and anomalies for an account."""
+    monitor = GrowthMonitor(db)
+
+    history = await monitor.get_growth_history(account_id, days=days)
+    anomalies = await monitor.get_anomalies(
+        user_id=current_user.id,
+        days=days,
+        min_score=30.0,
+    )
+
+    # Filter anomalies for this account
+    account_anomalies = [a for a in anomalies if a.get("account_id") == account_id]
+
+    return {
+        "history": [
+            {
+                "date": h.snapshot_at.isoformat() if h.snapshot_at else None,
+                "count": h.followers_count,
+            }
+            for h in history
+        ],
+        "anomalies": [
+            {
+                "date": a.get("snapshot_at"),
+                "type": a.get("anomaly_type"),
+                "change": a.get("followers_change"),
+            }
+            for a in account_anomalies
+        ],
+    }
+
+
+@router.get("/overlap")
+async def get_audience_overlap(
+    current_user: Annotated[AdminUser, Depends(get_current_active_user)],
+    db: Annotated[AsyncSession, Depends(get_db_session)],
+    user1: int = Query(..., description="First influencer ID"),
+    user2: int = Query(..., description="Second influencer ID"),
+) -> dict[str, Any]:
+    """Get audience overlap between two influencers."""
+    service = AudienceOverlapService(db)
+
+    try:
+        analysis = await service.analyze_overlap(
+            user_id=current_user.id,
+            influencer_a_id=user1,
+            influencer_b_id=user2,
+        )
+
+        total = analysis.followers_a_count + analysis.followers_b_count - analysis.overlap_count
+        overlap_pct = (analysis.overlap_count / total * 100) if total > 0 else 0
+
+        return {
+            "overlap_percentage": round(overlap_pct, 1),
+            "unique_followers": analysis.unique_a_count + analysis.unique_b_count,
+            "shared_followers": analysis.overlap_count,
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 # ==================== Intent Analysis ====================
 
 

@@ -32,6 +32,7 @@ class AccountState:
     account_id: int
     ct0: str
     auth_token: str
+    proxy_url: str | None = None  # Proxy URL to use for this account
     client: Client | None = None
     is_rate_limited: bool = False
     rate_limit_reset_at: datetime | None = None
@@ -77,7 +78,8 @@ class AccountState:
     def get_client(self) -> Client:
         """Get or create twikit client for this account."""
         if self.client is None:
-            self.client = Client(language="en-US")
+            # Create client with proxy support (proxy passed to constructor)
+            self.client = Client(language="en-US", proxy=self.proxy_url)
             self.client.set_cookies({
                 "ct0": self.ct0,
                 "auth_token": self.auth_token,
@@ -94,16 +96,38 @@ class AccountPool:
     _round_robin_index: int = 0
 
     @classmethod
-    def from_db_accounts(cls, db_accounts: list["TwitterAccount"]) -> "AccountPool":
-        """Create pool from database account records."""
-        states = [
-            AccountState(
+    def from_db_accounts(
+        cls,
+        db_accounts: list["TwitterAccount"],
+        proxy_urls: list[str] | None = None,
+    ) -> "AccountPool":
+        """Create pool from database account records.
+
+        Args:
+            db_accounts: List of Twitter accounts from database.
+            proxy_urls: Optional list of proxy URLs to assign to accounts (round-robin).
+        """
+        states = []
+        for i, acc in enumerate(db_accounts):
+            # Assign proxy in round-robin fashion if proxies are available
+            proxy_url = None
+            if proxy_urls:
+                proxy_url = proxy_urls[i % len(proxy_urls)]
+
+            states.append(AccountState(
                 account_id=acc.id,
                 ct0=acc.ct0,
                 auth_token=acc.auth_token,
+                proxy_url=proxy_url,
+            ))
+
+        if proxy_urls:
+            logger.info(
+                "account_pool.proxies_assigned",
+                account_count=len(states),
+                proxy_count=len(proxy_urls),
             )
-            for acc in db_accounts
-        ]
+
         return cls(accounts=states)
 
     def __len__(self) -> int:
@@ -490,6 +514,96 @@ async def get_followers_with_account(
     return followers[:max_results], was_rate_limited, response_time_ms, error_message
 
 
+async def get_following_with_account(
+    account: AccountState,
+    user_id: str,
+    max_results: int = 100,
+) -> tuple[list, bool, int, str | None]:
+    """Get users that a user is following with a specific account.
+
+    Args:
+        account: Account state to use.
+        user_id: Twitter user ID to get following for.
+        max_results: Maximum following to return.
+
+    Returns:
+        Tuple of (following list, was_rate_limited, response_time_ms, error_message).
+    """
+    client = account.get_client()
+    following = []
+    was_rate_limited = False
+    error_message = None
+
+    start_time = time.time()
+
+    try:
+        # Get following with pagination
+        result = await client.get_user_following(user_id, count=min(max_results, 200))
+        following = list(result)
+
+        # If we need more, paginate
+        while len(following) < max_results and result.next_cursor:
+            try:
+                result = await result.next()
+                following.extend(list(result))
+            except TooManyRequests:
+                account.mark_rate_limited()
+                was_rate_limited = True
+                break
+            except Exception:
+                break
+
+        logger.info(
+            "account_pool.get_following_success",
+            account_id=account.account_id,
+            user_id=user_id,
+            results=len(following),
+        )
+    except TooManyRequests:
+        account.mark_rate_limited()
+        was_rate_limited = True
+        error_message = "Rate limited (429)"
+    except Exception as e:
+        error_str = str(e) or f"{type(e).__name__}: {repr(e)}"
+        if "429" in error_str or "rate limit" in error_str.lower():
+            account.mark_rate_limited()
+            was_rate_limited = True
+            error_message = f"Rate limited: {error_str}"
+        elif "Timeout" in type(e).__name__ or "timeout" in error_str.lower():
+            # Network timeout - don't mark account as error
+            error_message = f"Timeout: {error_str}"
+            logger.warning(
+                "account_pool.get_following_timeout",
+                account_id=account.account_id,
+                user_id=user_id,
+            )
+        elif "ClientTransaction" in error_str or "attribute" in error_str.lower():
+            # Internal twikit auth error - clear client cache
+            account.mark_error()
+            account.client = None
+            error_message = f"Auth error: {error_str}"
+            logger.warning(
+                "account_pool.get_following_auth_error",
+                account_id=account.account_id,
+                user_id=user_id,
+                error=error_str,
+            )
+        else:
+            account.mark_error()
+            error_message = error_str
+            logger.warning(
+                "account_pool.get_following_error",
+                account_id=account.account_id,
+                user_id=user_id,
+                error=error_str,
+                error_type=type(e).__name__,
+            )
+
+    response_time_ms = int((time.time() - start_time) * 1000)
+
+    return following[:max_results], was_rate_limited, response_time_ms, error_message
+
+
 @dataclass
 class CrawlStats:
     """Statistics from concurrent follower crawling."""
@@ -651,3 +765,153 @@ async def concurrent_get_followers(
         stats.avg_response_time_ms = sum(response_times) / len(response_times)
 
     return all_followers, stats
+
+
+async def concurrent_get_following(
+    pool: AccountPool,
+    user_ids: list[str],
+    max_following_per_user: int = 100,
+    delay_between_batches: float = 1.0,
+) -> tuple[list, CrawlStats]:
+    """Get following for multiple users concurrently using multiple accounts.
+
+    Args:
+        pool: Account pool to use.
+        user_ids: List of user IDs to get following for.
+        max_following_per_user: Max following per user.
+        delay_between_batches: Delay between request batches.
+
+    Returns:
+        Tuple of (all following, crawl statistics).
+    """
+    all_following = []
+    remaining_user_ids = list(user_ids)
+    retry_user_ids = []
+    stats = CrawlStats()
+    response_times = []
+
+    while remaining_user_ids:
+        # Get available accounts
+        available_count = pool.get_available_count()
+
+        if available_count == 0:
+            # No accounts available, add remaining to retry
+            retry_user_ids.extend(remaining_user_ids)
+            logger.warning(
+                "account_pool.no_available_accounts_for_following",
+                remaining_users=len(remaining_user_ids),
+            )
+            break
+
+        # Get accounts for concurrent requests
+        batch_size = min(available_count, len(remaining_user_ids))
+        accounts = await pool.get_multiple_accounts(batch_size)
+
+        if not accounts:
+            break
+
+        # Create concurrent tasks
+        batch_user_ids = remaining_user_ids[:len(accounts)]
+        remaining_user_ids = remaining_user_ids[len(accounts):]
+
+        tasks = [
+            get_following_with_account(account, user_id, max_following_per_user)
+            for account, user_id in zip(accounts, batch_user_ids)
+        ]
+
+        # Execute concurrently
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        for i, result in enumerate(results):
+            stats.total_requests += 1
+
+            if isinstance(result, Exception):
+                stats.failed_requests += 1
+                logger.error(
+                    "account_pool.concurrent_following_error",
+                    user_id=batch_user_ids[i],
+                    error=str(result),
+                )
+                stats.account_activities.append({
+                    "account_id": accounts[i].account_id,
+                    "user_id": batch_user_ids[i],
+                    "success": False,
+                    "result_count": 0,
+                    "response_time_ms": 0,
+                    "is_rate_limited": False,
+                    "error_message": str(result),
+                })
+                continue
+
+            following, was_rate_limited, response_time_ms, error_message = result
+            response_times.append(response_time_ms)
+
+            if was_rate_limited:
+                stats.rate_limited_requests += 1
+                retry_user_ids.append(batch_user_ids[i])
+            elif error_message:
+                stats.failed_requests += 1
+            else:
+                stats.successful_requests += 1
+                stats.total_followers += len(following)
+
+            all_following.extend(following)
+
+            stats.account_activities.append({
+                "account_id": accounts[i].account_id,
+                "user_id": batch_user_ids[i],
+                "success": not error_message and not was_rate_limited,
+                "result_count": len(following),
+                "response_time_ms": response_time_ms,
+                "is_rate_limited": was_rate_limited,
+                "error_message": error_message,
+            })
+
+        # Delay between batches
+        if remaining_user_ids:
+            await asyncio.sleep(delay_between_batches)
+
+    # Handle retry user IDs with remaining available accounts
+    if retry_user_ids:
+        logger.info(
+            "account_pool.retrying_following",
+            count=len(retry_user_ids),
+        )
+        for user_id in retry_user_ids:
+            account = await pool.get_account()
+            if not account:
+                break
+
+            stats.total_requests += 1
+            following, was_rate_limited, response_time_ms, error_message = await get_following_with_account(
+                account, user_id, max_following_per_user
+            )
+            response_times.append(response_time_ms)
+
+            if was_rate_limited:
+                stats.rate_limited_requests += 1
+            elif error_message:
+                stats.failed_requests += 1
+            else:
+                stats.successful_requests += 1
+                stats.total_followers += len(following)
+
+            all_following.extend(following)
+
+            stats.account_activities.append({
+                "account_id": account.account_id,
+                "user_id": user_id,
+                "success": not error_message and not was_rate_limited,
+                "result_count": len(following),
+                "response_time_ms": response_time_ms,
+                "is_rate_limited": was_rate_limited,
+                "error_message": error_message,
+            })
+
+            await asyncio.sleep(2)  # Longer delay for retries
+
+    # Calculate average response time
+    if response_times:
+        stats.avg_response_time_ms = sum(response_times) / len(response_times)
+
+    return all_following, stats

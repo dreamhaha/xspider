@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Annotated
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +35,10 @@ def detect_protocol(url: str) -> ProxyProtocol:
         return ProxyProtocol.HTTP
 
 
+# ============================================
+# Static routes (must come before dynamic routes)
+# ============================================
+
 @router.get("/", response_model=list[ProxyResponse])
 async def list_proxies(
     current_user: Annotated[AdminUser, Depends(get_current_admin)],
@@ -49,27 +53,6 @@ async def list_proxies(
 
     result = await db.execute(query)
     return list(result.scalars().all())
-
-
-@router.get("/{proxy_id}", response_model=ProxyResponse)
-async def get_proxy(
-    proxy_id: int,
-    current_user: Annotated[AdminUser, Depends(get_current_admin)],
-    db: AsyncSession = Depends(get_db_session),
-) -> ProxyServer:
-    """Get proxy details."""
-    result = await db.execute(
-        select(ProxyServer).where(ProxyServer.id == proxy_id)
-    )
-    proxy = result.scalar_one_or_none()
-
-    if not proxy:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Proxy not found",
-        )
-
-    return proxy
 
 
 @router.post("/", response_model=ProxyResponse, status_code=status.HTTP_201_CREATED)
@@ -89,6 +72,122 @@ async def create_proxy(
     db.add(proxy)
     await db.commit()
     await db.refresh(proxy)
+
+    return proxy
+
+
+@router.post("/batch-delete", status_code=status.HTTP_200_OK)
+async def batch_delete_proxies(
+    current_user: Annotated[AdminUser, Depends(get_current_admin)],
+    db: AsyncSession = Depends(get_db_session),
+    proxy_ids: list[int] = Body(..., embed=False),
+) -> dict:
+    """Batch delete proxies by IDs."""
+    if not proxy_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No proxy IDs provided",
+        )
+
+    result = await db.execute(
+        select(ProxyServer).where(ProxyServer.id.in_(proxy_ids))
+    )
+    proxies = list(result.scalars().all())
+
+    deleted_count = len(proxies)
+    for proxy in proxies:
+        await db.delete(proxy)
+
+    await db.commit()
+
+    return {"deleted": deleted_count}
+
+
+@router.post("/batch-import", response_model=list[ProxyResponse])
+async def batch_import_proxies(
+    request: ProxyBatchImport,
+    current_user: Annotated[AdminUser, Depends(get_current_admin)],
+    db: AsyncSession = Depends(get_db_session),
+) -> list[ProxyServer]:
+    """Batch import proxies from URL list."""
+    proxies = []
+
+    for url in request.urls:
+        url = url.strip()
+        if not url:
+            continue
+
+        # Detect protocol from URL if not specified
+        protocol = request.protocol
+        if protocol == ProxyProtocol.HTTP:
+            protocol = detect_protocol(url)
+
+        proxy = ProxyServer(
+            url=url,
+            protocol=protocol,
+            status=ProxyStatus.ACTIVE,
+            created_by=current_user.id,
+        )
+        db.add(proxy)
+        proxies.append(proxy)
+
+    await db.commit()
+
+    for proxy in proxies:
+        await db.refresh(proxy)
+
+    return proxies
+
+
+@router.post("/check-all", response_model=list[ProxyHealthCheck])
+async def check_all_proxies(
+    current_user: Annotated[AdminUser, Depends(get_current_admin)],
+    db: AsyncSession = Depends(get_db_session),
+) -> list[ProxyHealthCheck]:
+    """Check health of all proxies."""
+    from xspider.admin.services.proxy_checker import ProxyCheckerService
+
+    result = await db.execute(select(ProxyServer))
+    proxies = list(result.scalars().all())
+
+    checker = ProxyCheckerService(db)
+    results = []
+
+    for proxy in proxies:
+        check_result = await checker.check_proxy(proxy)
+        results.append(
+            ProxyHealthCheck(
+                proxy_id=proxy.id,
+                status=check_result.status,
+                response_time=check_result.response_time,
+                error_message=check_result.error_message,
+            )
+        )
+
+    return results
+
+
+# ============================================
+# Dynamic routes (with path parameters)
+# ============================================
+
+@router.get("/{proxy_id}", response_model=ProxyResponse)
+async def get_proxy(
+    proxy_id: int,
+    current_user: Annotated[AdminUser, Depends(get_current_admin)],
+    db: AsyncSession = Depends(get_db_session),
+) -> ProxyServer:
+    """Get proxy details."""
+    result = await db.execute(
+        select(ProxyServer).where(ProxyServer.id == proxy_id)
+    )
+    proxy = result.scalar_one_or_none()
+
+    if not proxy:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Proxy not found",
+        )
 
     return proxy
 
@@ -149,42 +248,6 @@ async def delete_proxy(
     await db.commit()
 
 
-@router.post("/batch-import", response_model=list[ProxyResponse])
-async def batch_import_proxies(
-    request: ProxyBatchImport,
-    current_user: Annotated[AdminUser, Depends(get_current_admin)],
-    db: AsyncSession = Depends(get_db_session),
-) -> list[ProxyServer]:
-    """Batch import proxies from URL list."""
-    proxies = []
-
-    for url in request.urls:
-        url = url.strip()
-        if not url:
-            continue
-
-        # Detect protocol from URL if not specified
-        protocol = request.protocol
-        if protocol == ProxyProtocol.HTTP:
-            protocol = detect_protocol(url)
-
-        proxy = ProxyServer(
-            url=url,
-            protocol=protocol,
-            status=ProxyStatus.ACTIVE,
-            created_by=current_user.id,
-        )
-        db.add(proxy)
-        proxies.append(proxy)
-
-    await db.commit()
-
-    for proxy in proxies:
-        await db.refresh(proxy)
-
-    return proxies
-
-
 @router.post("/{proxy_id}/check", response_model=ProxyHealthCheck)
 async def check_proxy_health(
     proxy_id: int,
@@ -214,34 +277,6 @@ async def check_proxy_health(
         response_time=check_result.response_time,
         error_message=check_result.error_message,
     )
-
-
-@router.post("/check-all", response_model=list[ProxyHealthCheck])
-async def check_all_proxies(
-    current_user: Annotated[AdminUser, Depends(get_current_admin)],
-    db: AsyncSession = Depends(get_db_session),
-) -> list[ProxyHealthCheck]:
-    """Check health of all proxies."""
-    from xspider.admin.services.proxy_checker import ProxyCheckerService
-
-    result = await db.execute(select(ProxyServer))
-    proxies = list(result.scalars().all())
-
-    checker = ProxyCheckerService(db)
-    results = []
-
-    for proxy in proxies:
-        check_result = await checker.check_proxy(proxy)
-        results.append(
-            ProxyHealthCheck(
-                proxy_id=proxy.id,
-                status=check_result.status,
-                response_time=check_result.response_time,
-                error_message=check_result.error_message,
-            )
-        )
-
-    return results
 
 
 @router.post("/{proxy_id}/reset-stats", response_model=ProxyResponse)

@@ -416,3 +416,145 @@ Respond in JSON format:
             "intent_distribution": label_distribution,
             "sentiment_distribution": sentiment_distribution,
         }
+
+    async def get_overview_stats(self, user_id: int) -> dict[str, Any]:
+        """Get intent overview statistics for a user."""
+        from sqlalchemy import func
+
+        from xspider.admin.models import MonitoredTweet
+
+        # Get tweets belonging to this user's influencers
+        user_tweets = select(MonitoredTweet.id).join(
+            MonitoredTweet.influencer
+        ).where(
+            MonitoredTweet.influencer.has(user_id=user_id)
+        ).subquery()
+
+        # Base query for user's commenters
+        base_query = select(TweetCommenter).where(
+            TweetCommenter.tweet_id.in_(select(user_tweets)),
+            TweetCommenter.intent_label.isnot(None),
+        )
+
+        # Count by intent category
+        high_intent_labels = [
+            IntentLabel.LOOKING_FOR_SOLUTION,
+            IntentLabel.ASKING_PRICE,
+        ]
+        medium_intent_labels = [
+            IntentLabel.INTERESTED,
+            IntentLabel.COMPLAINING,
+        ]
+
+        high_result = await self.db.execute(
+            select(func.count(TweetCommenter.id)).where(
+                TweetCommenter.tweet_id.in_(select(user_tweets)),
+                TweetCommenter.intent_label.in_(high_intent_labels),
+            )
+        )
+        high_intent = high_result.scalar() or 0
+
+        medium_result = await self.db.execute(
+            select(func.count(TweetCommenter.id)).where(
+                TweetCommenter.tweet_id.in_(select(user_tweets)),
+                TweetCommenter.intent_label.in_(medium_intent_labels),
+            )
+        )
+        medium_intent = medium_result.scalar() or 0
+
+        total_result = await self.db.execute(
+            select(func.count(TweetCommenter.id)).where(
+                TweetCommenter.tweet_id.in_(select(user_tweets)),
+                TweetCommenter.intent_label.isnot(None),
+            )
+        )
+        total_analyzed = total_result.scalar() or 0
+        low_intent = total_analyzed - high_intent - medium_intent
+
+        # Get top high intent users
+        high_intent_query = (
+            select(TweetCommenter)
+            .where(
+                TweetCommenter.tweet_id.in_(select(user_tweets)),
+                TweetCommenter.intent_label.in_(high_intent_labels),
+            )
+            .order_by(TweetCommenter.intent_confidence.desc())
+            .limit(10)
+        )
+        result = await self.db.execute(high_intent_query)
+        high_intent_commenters = list(result.scalars().all())
+
+        return {
+            "high_intent": high_intent,
+            "medium_intent": medium_intent,
+            "low_intent": max(0, low_intent),
+            "total_analyzed": total_analyzed,
+            "high_intent_users": [
+                {
+                    "screen_name": c.screen_name,
+                    "score": round(c.intent_confidence * 100) if c.intent_confidence else 0,
+                    "keywords": json.loads(c.intent_keywords) if c.intent_keywords else [],
+                }
+                for c in high_intent_commenters
+            ],
+        }
+
+    async def get_intent_users(
+        self,
+        user_id: int,
+        intent_labels: list[IntentLabel] | None = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Get users with intent analysis results."""
+        from sqlalchemy import func
+
+        from xspider.admin.models import MonitoredTweet
+
+        # Get tweets belonging to this user's influencers
+        user_tweets = select(MonitoredTweet.id).join(
+            MonitoredTweet.influencer
+        ).where(
+            MonitoredTweet.influencer.has(user_id=user_id)
+        ).subquery()
+
+        query = select(TweetCommenter).where(
+            TweetCommenter.tweet_id.in_(select(user_tweets)),
+            TweetCommenter.intent_label.isnot(None),
+        )
+
+        if intent_labels:
+            query = query.where(TweetCommenter.intent_label.in_(intent_labels))
+
+        # Paginate
+        offset = (page - 1) * page_size
+        query = query.order_by(TweetCommenter.intent_confidence.desc())
+        query = query.offset(offset).limit(page_size)
+
+        result = await self.db.execute(query)
+        commenters = list(result.scalars().all())
+
+        # Determine intent level
+        high_labels = {
+            IntentLabel.LOOKING_FOR_SOLUTION,
+            IntentLabel.ASKING_PRICE,
+        }
+        medium_labels = {
+            IntentLabel.INTERESTED,
+            IntentLabel.COMPLAINING,
+        }
+
+        return [
+            {
+                "screen_name": c.screen_name,
+                "intent_level": (
+                    "high" if c.intent_label in high_labels
+                    else "medium" if c.intent_label in medium_labels
+                    else "low"
+                ),
+                "score": round(c.intent_confidence * 100) if c.intent_confidence else 0,
+                "keywords": json.loads(c.intent_keywords) if c.intent_keywords else [],
+                "last_comment": c.comment_text[:100] if c.comment_text else None,
+            }
+            for c in commenters
+        ]

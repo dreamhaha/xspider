@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _("operating_accounts.title") }} - xspider Admin{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/admin/operating-accounts">{{ _("operating_accounts.title") }}</a></li>
+                <li class="breadcrumb-item active" id="breadcrumb-name">...</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Account Info Card -->
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-person-circle"></i> {{ _("profile.account_info") }}
+            </div>
+            <div class="card-body" id="account-info">
+                <div class="text-center py-4">{{ _("common.loading") }}</div>
+            </div>
+        </div>
+
+        <!-- Shadow Ban Status -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><i class="bi bi-shield-check"></i> {{ _("operating_accounts.shadowban_status") }}</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="checkShadowban()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+            <div class="card-body" id="shadowban-status">
+                <div class="text-center py-4">{{ _("common.loading") }}</div>
+            </div>
+        </div>
+
+        <!-- Risk Assessment -->
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-exclamation-triangle"></i> {{ _("operating_accounts.risk_assessment") }}
+            </div>
+            <div class="card-body" id="risk-assessment">
+                <div class="text-center py-4">{{ _("common.loading") }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats & Activity -->
+    <div class="col-md-8">
+        <!-- Follower Growth Chart -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-graph-up"></i> {{ _("operating_accounts.follower_snapshot") }}
+            </div>
+            <div class="card-body">
+                <canvas id="followerChart" height="200"></canvas>
+            </div>
+        </div>
+
+        <!-- Posting Limits -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <i class="bi bi-speedometer2"></i> {{ _("operating_accounts.posting_limits") }}
+            </div>
+            <div class="card-body" id="posting-limits">
+                <div class="text-center py-4">{{ _("common.loading") }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const accountId = {{ account_id }};
+let followerChart = null;
+
+async function loadAccountDetail() {
+    try {
+        const response = await fetch(`/api/operating-accounts/${accountId}`);
+        if (!response.ok) throw new Error('Failed to load account');
+
+        const account = await response.json();
+        renderAccountInfo(account);
+        renderShadowbanStatus(account);
+        renderRiskAssessment(account);
+        renderPostingLimits(account);
+        renderFollowerChart(account.follower_history || []);
+
+        document.getElementById('breadcrumb-name').textContent = '@' + account.screen_name;
+    } catch (error) {
+        console.error('Error loading account:', error);
+    }
+}
+
+function renderAccountInfo(account) {
+    const html = `
+        <div class="text-center mb-3">
+            <img src="${account.profile_image_url || '/static/img/default-avatar.png'}"
+                 class="rounded-circle mb-2" width="80" height="80" alt="Avatar">
+            <h5 class="mb-1">@${account.screen_name}</h5>
+            <p class="text-muted small">${account.name || ''}</p>
+        </div>
+        <div class="row text-center">
+            <div class="col-4">
+                <div class="fw-bold">${formatNumber(account.followers_count || 0)}</div>
+                <small class="text-muted">${t('operating_accounts.followers')}</small>
+            </div>
+            <div class="col-4">
+                <div class="fw-bold">${formatNumber(account.following_count || 0)}</div>
+                <small class="text-muted">${t('operating_accounts.following')}</small>
+            </div>
+            <div class="col-4">
+                <div class="fw-bold">${formatNumber(account.tweets_count || 0)}</div>
+                <small class="text-muted">Tweets</small>
+            </div>
+        </div>
+    `;
+    document.getElementById('account-info').innerHTML = html;
+}
+
+function renderShadowbanStatus(account) {
+    const status = account.shadowban_status || 'unknown';
+    const badges = {
+        'clean': { class: 'success', icon: 'check-circle' },
+        'search_ban': { class: 'warning', icon: 'exclamation-triangle' },
+        'reply_ban': { class: 'danger', icon: 'x-circle' },
+        'ghost_ban': { class: 'dark', icon: 'ghost' }
+    };
+    const badge = badges[status] || { class: 'secondary', icon: 'question-circle' };
+
+    const html = `
+        <div class="text-center">
+            <i class="bi bi-${badge.icon} text-${badge.class}" style="font-size: 3rem;"></i>
+            <h4 class="mt-2">${t('operating_accounts.' + status) || status}</h4>
+            <p class="text-muted small">
+                ${t('operating_accounts.last_checked')}: ${account.last_checked_at ? formatDate(account.last_checked_at) : t('common.never')}
+            </p>
+        </div>
+    `;
+    document.getElementById('shadowban-status').innerHTML = html;
+}
+
+function renderRiskAssessment(account) {
+    const score = account.risk_score || 0;
+    const riskFactors = account.risk_factors || [];
+
+    let progressClass = 'bg-success';
+    if (score >= 60) progressClass = 'bg-danger';
+    else if (score >= 30) progressClass = 'bg-warning';
+
+    let factorsHtml = riskFactors.length > 0
+        ? riskFactors.map(f => `<li class="list-group-item list-group-item-warning">${f}</li>`).join('')
+        : `<li class="list-group-item text-muted">${t('stats.no_risk_factors')}</li>`;
+
+    const html = `
+        <div class="mb-3">
+            <label class="form-label">${t('operating_accounts.risk_score')}: ${score}/100</label>
+            <div class="progress">
+                <div class="progress-bar ${progressClass}" style="width: ${score}%"></div>
+            </div>
+        </div>
+        <h6>${t('stats.risk_factors')}</h6>
+        <ul class="list-group list-group-flush">
+            ${factorsHtml}
+        </ul>
+    `;
+    document.getElementById('risk-assessment').innerHTML = html;
+}
+
+function renderPostingLimits(account) {
+    const limits = account.posting_limits || {};
+    const html = `
+        <div class="row">
+            <div class="col-6">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <h4>${limits.tweets_today || 0} / ${limits.tweets_limit || 'N/A'}</h4>
+                        <small class="text-muted">Tweets Today</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <h4>${limits.dms_today || 0} / ${limits.dms_limit || 'N/A'}</h4>
+                        <small class="text-muted">DMs Today</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row mt-3">
+            <div class="col-6">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <h4>${limits.follows_today || 0} / ${limits.follows_limit || 'N/A'}</h4>
+                        <small class="text-muted">Follows Today</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card border-0 bg-light">
+                    <div class="card-body text-center">
+                        <h4>${limits.likes_today || 0} / ${limits.likes_limit || 'N/A'}</h4>
+                        <small class="text-muted">Likes Today</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    document.getElementById('posting-limits').innerHTML = html;
+}
+
+function renderFollowerChart(history) {
+    const ctx = document.getElementById('followerChart').getContext('2d');
+
+    if (followerChart) {
+        followerChart.destroy();
+    }
+
+    const labels = history.map(h => new Date(h.date).toLocaleDateString());
+    const data = history.map(h => h.count);
+
+    followerChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: labels.length > 0 ? labels : ['No data'],
+            datasets: [{
+                label: t('operating_accounts.followers'),
+                data: data.length > 0 ? data : [0],
+                borderColor: 'rgb(75, 192, 192)',
+                tension: 0.1,
+                fill: true,
+                backgroundColor: 'rgba(75, 192, 192, 0.1)'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false }
+            },
+            scales: {
+                y: { beginAtZero: false }
+            }
+        }
+    });
+}
+
+function formatNumber(num) {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+}
+
+function formatDate(dateStr) {
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+}
+
+async function checkShadowban() {
+    try {
+        const response = await fetch(`/api/operating-accounts/${accountId}/check-shadowban`, { method: 'POST' });
+        if (response.ok) {
+            loadAccountDetail();
+        } else {
+            alert(t('operating_accounts.check_failed'));
+        }
+    } catch (error) {
+        alert(t('common.error'));
+    }
+}
+
+document.addEventListener('DOMContentLoaded', loadAccountDetail);
+</script>
+{% endblock %}
